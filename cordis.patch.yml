@@ -1,0 +1,5 @@
+# dsh-plugin-no-workspace: enable standalone chats while preserving DSH's
+# native workspace browser, picker, menus, directory flow, and view options.
+- insert:
+    - id: no-workspace
+      name: dsh-plugin-no-workspace
