@@ -6,6 +6,7 @@
 
 [English](README.en.md) · 简体中文
 
+[![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
 [![Release](https://img.shields.io/badge/release-v1.0.0-5b8cff?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.0.0)
 [![DSH](https://img.shields.io/badge/DSH-0.1.1--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![Tests](https://img.shields.io/badge/tests-88%20passed-36b37e?style=flat-square)](#验证)
