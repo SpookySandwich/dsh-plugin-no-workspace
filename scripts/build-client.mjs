@@ -48,5 +48,5 @@ if (process.argv.includes('--check')) {
   console.log('lib/client.js is up to date');
 } else {
   writeFileSync(target, out);
-  console.log(`wrote lib/client.js (${out.length} bytes)`);
+  console.error(`wrote lib/client.js (${out.length} bytes)`);
 }

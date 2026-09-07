@@ -1,17 +1,22 @@
 // Boots a DSH server + headless Edge for an end-to-end run, and restores the
 // DSH home afterwards.
 //
-// The suite deliberately runs against the real installed profile — that is the
-// artifact the user reloads — so it snapshots the mutable parts of $DSH_HOME
-// first and rolls them back on exit. Only session directories the run itself
-// created are removed; anything that existed before is left alone.
+// The suite runs only in an explicitly prepared disposable profile. All
+// fixtures and cleanup resolve through that same home; the regular installed
+// user's profile is never an implicit test target.
 
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-const DSH_HOME = process.env.DSH_HOME ?? path.join(os.homedir(), '.dsh');
+// One explicit disposable home for boot, fixtures and cleanup. The desktop
+// CLI shim overrides DSH_HOME, so startDsh invokes the official JS CLI directly.
+export const DSH_HOME = path.resolve(process.env.DSH_HOME ?? '.');
+if (path.dirname(DSH_HOME) !== path.resolve(os.tmpdir())
+    || !path.basename(DSH_HOME).startsWith('dsh-no-workspace-e2e-')) {
+  throw new Error('Set DSH_HOME to a new dsh-no-workspace-e2e-* directory under the system temporary directory.');
+}
 const WORKSPACE_STORE = path.join(DSH_HOME, 'storages', 'workspace.json');
 const SESSIONS_ROOT = path.join(DSH_HOME, 'sessions');
 
@@ -71,7 +76,7 @@ export function readWorkspaceStore() {
   return JSON.parse(fs.readFileSync(WORKSPACE_STORE, 'utf8'));
 }
 
-function killListenerOnPort(port) {
+function listenersOnPort(port) {
   // netstat is the only dependency-free way to find the owner on Windows.
   const out = spawnSync('netstat', ['-ano'], { encoding: 'utf8' }).stdout ?? '';
   const pids = new Set();
@@ -81,25 +86,32 @@ function killListenerOnPort(port) {
       if (pid && pid !== '0') pids.add(pid);
     }
   }
-  for (const pid of pids) spawnSync('taskkill', ['/PID', pid, '/F', '/T']);
   return [...pids];
 }
 
 export async function startDsh({ port, profile = 'desktop', logDir }) {
-  killListenerOnPort(port);
+  if (listenersOnPort(port).length) throw new Error(`Port ${port} is already in use; choose a free test port.`);
+  const cli = process.env.DSH_CLI_ENTRY;
+  if (!cli || !fs.existsSync(cli)) throw new Error('Set DSH_CLI_ENTRY to the installed official @deepseek-ai/dsh/lib/bin.js.');
   fs.mkdirSync(logDir, { recursive: true });
   const out = fs.openSync(path.join(logDir, `dsh-${port}.log`), 'w');
-  const child = spawn('dsh', ['--profile', profile, '--no-open', '--port', String(port)], {
-    shell: true,
+  const child = spawn(process.execPath, ['--expose-internals', cli, '--profile', profile, '--no-open', '--port', String(port)], {
+    env: { ...process.env, DSH_HOME },
     stdio: ['ignore', out, out],
     detached: false,
   });
   const origin = `http://127.0.0.1:${port}`;
   const ready = await waitForHttp(`${origin}/no-workspace/status`, 90000);
-  if (!ready) throw new Error(`DSH did not come up on ${port} — see ${path.join(logDir, `dsh-${port}.log`)}`);
+  if (!ready) {
+    try { child.kill(); } catch { /* already gone */ }
+    throw new Error(`DSH did not come up on ${port} — see ${path.join(logDir, `dsh-${port}.log`)}`);
+  }
   return {
     origin,
-    stop() { killListenerOnPort(port); try { child.kill(); } catch { /* already gone */ } },
+    stop() {
+      if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/F', '/T']);
+      try { child.kill(); } catch { /* already gone */ }
+    },
   };
 }
 

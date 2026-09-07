@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { Driver } from './driver.mjs';
-import { readWorkspaceStore, restoreDshHome, snapshotDshHome, startDsh, startEdge } from './env.mjs';
+import { DSH_HOME, readWorkspaceStore, restoreDshHome, snapshotDshHome, startDsh, startEdge } from './env.mjs';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const scratch = path.join(root, 'scratch', 'e2e-current');
 const workspacePath = path.join(scratch, 'workspace');
-const workspaceStorePath = path.join(os.homedir(), '.dsh', 'storages', 'workspace.json');
-const sessionsRoot = path.join(os.homedir(), '.dsh', 'sessions');
+const workspaceStorePath = path.join(DSH_HOME, 'storages', 'workspace.json');
+const sessionsRoot = path.join(DSH_HOME, 'sessions');
 const workspaceId = 'dsh-no-workspace-e2e';
 const workspaceTitle = 'DSH No Workspace E2E';
 

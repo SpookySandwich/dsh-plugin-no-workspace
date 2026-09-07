@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { homedir } from 'node:os';
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
 import {
   name,
   inject,
@@ -587,7 +588,7 @@ describe('Robustness & Security QA Suite: dsh-plugin-no-workspace', () => {
         const json = await res.json();
         assert.equal(json.ok, true);
         assert.equal(json.plugin, 'dsh-plugin-no-workspace');
-        assert.equal(json.version, '1.0.0');
+        assert.equal(json.version, JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
         assert.deepEqual(json.features, ['detach', 'create-standalone', 'workspace-free']);
       }
     });
