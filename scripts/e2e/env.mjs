@@ -108,6 +108,8 @@ export async function startDsh({ port, profile = 'desktop', logDir }) {
   }
   return {
     origin,
+    url: fs.readFileSync(path.join(logDir, `dsh-${port}.log`), 'utf8')
+      .match(/https?:\/\/127\.0\.0\.1:\d+\/\?token=[A-Za-z0-9_-]+/)?.[0] ?? origin,
     stop() {
       if (process.platform === 'win32') spawnSync('taskkill', ['/PID', String(child.pid), '/F', '/T']);
       try { child.kill(); } catch { /* already gone */ }

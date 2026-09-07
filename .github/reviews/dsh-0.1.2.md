@@ -10,4 +10,12 @@ Local unit/loading/persistence tests and npm package checks pass. In official DS
 
 The real DSH checks used a new disposable home, locally generated attachments and an offline model, with all four plugins installed together. No existing user conversations or remote model credentials were used. The isolated server was stopped after checks.
 
-Browser interaction acceptance remains pending: the local Chrome test page returned ERR_BLOCKED_BY_CLIENT. Component tests do not substitute for visual acceptance. npm publication is pending final acceptance and registry authentication.
+## Browser acceptance
+
+Passed in an isolated Microsoft Edge test process against the official DSH 0.1.2-rc.1 Web runtime. All four plugins were installed together, with synthetic attachments and a local streaming model.
+
+New Session opens a standalone, editable composer with an enabled model selector. The native workspace picker retains a typed draft when entering a workspace and detaching again. A fast follow-up selection waits for the destination session instead of acting on the previous selection.
+
+No application console errors were recorded. The test browser was closed in the runner cleanup.
+
+![no-workspace](assets/no-workspace.png)

@@ -96,8 +96,12 @@ export class Driver {
     return this.eval(`(() => {
       const el = document.querySelector(${JSON.stringify(selector)});
       if (!el) return null;
-      const r = el.getBoundingClientRect();
+      let r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return null;
+      if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) {
+        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        r = el.getBoundingClientRect();
+      }
       return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, text: (el.innerText || '').trim().slice(0, 80) };
     })()`);
   }
@@ -108,8 +112,12 @@ export class Driver {
       const els = [...document.querySelectorAll(${JSON.stringify(selector)})];
       const el = els.find((e) => (e.innerText || '').includes(${JSON.stringify(text)}));
       if (!el) return null;
-      const r = el.getBoundingClientRect();
+      let r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return null;
+      if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) {
+        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        r = el.getBoundingClientRect();
+      }
       return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, text: (el.innerText || '').trim().slice(0, 80) };
     })()`);
   }

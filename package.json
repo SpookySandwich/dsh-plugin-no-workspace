@@ -38,7 +38,7 @@
     "build": "node scripts/build-client.mjs",
     "pretest": "npm run build",
     "prepack": "npm run build",
-    "test": "node scripts/build-client.mjs --check && node test/index.test.mjs && node test/robustness.test.mjs && node --test test/client-loading.test.mjs && node --test test/persistence.test.mjs",
+    "test": "node scripts/build-client.mjs --check && node test/index.test.mjs && node test/robustness.test.mjs && node --test test/client-loading.test.mjs && node --test test/persistence.test.mjs && node --test test/client-interactions.test.mjs",
     "test:e2e": "node scripts/e2e/run.mjs",
     "check:package": "node scripts/check-package.mjs"
   },
