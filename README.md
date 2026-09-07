@@ -7,9 +7,9 @@
 [English](README.en.md) · 简体中文
 
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
-[![Release](https://img.shields.io/badge/release-v1.0.0-5b8cff?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.0.0)
-[![DSH](https://img.shields.io/badge/DSH-0.1.1--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
-[![Tests](https://img.shields.io/badge/tests-88%20passed-36b37e?style=flat-square)](#验证)
+[![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
+[![DSH](https://img.shields.io/badge/DSH-0.1.2--rc.1-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 为 DeepSeek Harness 添加真正的一等「无工作区」会话，同时保留原生工作区体验。
@@ -43,7 +43,7 @@ dsh plugin --profile desktop add dsh-plugin-no-workspace
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # 或
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.0.0.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.0.1.tgz
 ```
 
 安装或升级后重启 DSH，使宿主端和客户端代码同时重新加载。
@@ -63,15 +63,19 @@ dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.0.0.tgz
 ## 验证
 
 ```bash
+npm ci
 npm test
-npm run test:e2e
+npm run check:package
 ```
 
-测试覆盖 88 个单元与健壮性用例，以及真实 DSH desktop profile 上的独立会话创建、输入与模型选择、工作区切换、草稿迁移、解绑、侧边栏展平和原生菜单行为。E2E 结束后会恢复工作区存储并删除测试会话。
+测试覆盖单元与健壮性用例、新版客户端依赖和会话持久化。可选 `npm run test:e2e` 需要先创建系统临时目录下的 `dsh-no-workspace-e2e-*` 测试目录，将 `DSH_HOME` 指向它，并设置 `DSH_CLI_ENTRY` 为官方 `@deepseek-ai/dsh/lib/bin.js` 路径。测试 profile 需单独安装本插件；脚本拒绝操作日常使用的 DSH 目录。
 
 ## 兼容性
 
-已针对 DSH `0.1.1-rc.2` 验证，并可与 `dsh-plugin-message-edit`、`dsh-plugin-marginalia`、`dsh-plugin-rollout-scout` 等客户端插件共存。
+本次兼容目标为 DSH `0.1.2-rc.1`。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
+
+
+已适配 DSH `0.1.2-rc.1`。在隔离 Web 环境验证空会话持久化和移出工作区；客户端加载有自动化测试。
 
 ## License
 

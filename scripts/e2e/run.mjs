@@ -1,15 +1,14 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { Driver } from './driver.mjs';
-import { readWorkspaceStore, restoreDshHome, snapshotDshHome, startDsh, startEdge } from './env.mjs';
+import { DSH_HOME, readWorkspaceStore, restoreDshHome, snapshotDshHome, startDsh, startEdge } from './env.mjs';
 
 const root = path.resolve(import.meta.dirname, '..', '..');
 const scratch = path.join(root, 'scratch', 'e2e-current');
 const workspacePath = path.join(scratch, 'workspace');
-const workspaceStorePath = path.join(os.homedir(), '.dsh', 'storages', 'workspace.json');
-const sessionsRoot = path.join(os.homedir(), '.dsh', 'sessions');
+const workspaceStorePath = path.join(DSH_HOME, 'storages', 'workspace.json');
+const sessionsRoot = path.join(DSH_HOME, 'sessions');
 const workspaceId = 'dsh-no-workspace-e2e';
 const workspaceTitle = 'DSH No Workspace E2E';
 
@@ -59,28 +58,30 @@ let driver;
 try {
   seedWorkspace();
   server = await startDsh({ port: 5611, profile: 'desktop', logDir: path.join(scratch, 'logs') });
-  edge = await startEdge({ debugPort: 9223, profileDir: path.join(scratch, 'edge-profile'), appOrigin: server.origin });
-  driver = await Driver.attach({ debugPort: 9223, appOrigin: server.origin, shotDir: path.join(scratch, 'shots') });
+  edge = await startEdge({ debugPort: 9223, profileDir: path.join(scratch, 'edge-profile'), appOrigin: server.url });
+  driver = await Driver.attach({ debugPort: 9223, appOrigin: server.url, shotDir: path.join(scratch, 'shots') });
   await driver.reload({ settleMs: 7000 });
+  if (await exactButtonVisible(driver, 'Continue')) await driver.clickText('button', 'Continue');
+  else if (await exactButtonVisible(driver, '继续')) await driver.clickText('button', '继续');
 
-  await driver.waitFor(`document.querySelector('textarea') && [...document.querySelectorAll('button')].some((b) => /新会话|New Session/.test(b.innerText || ''))`, { timeoutMs: 30000, label: 'app shell' });
+  await driver.waitFor(`document.querySelector('[data-composer-input]') && [...document.querySelectorAll('button')].some((b) => /新会话|New Session/.test(b.innerText || ''))`, { timeoutMs: 30000, label: 'app shell' });
   assert.equal(await driver.eval(`document.querySelector('.dsh-nw-root') === null`), true, 'native sidebar remains mounted');
 
   const newSession = await driver.boxWithText('button', '新会话') || await driver.boxWithText('button', 'New Session');
   assert.ok(newSession, 'native New Session button is visible');
   await driver.clickAt(newSession.x, newSession.y);
   await driver.waitFor(`(() => {
-    const textarea = document.querySelector('textarea');
-    return Boolean(textarea && !textarea.readOnly && !textarea.disabled && document.querySelector('button[data-dsh-nw-chip]'));
+    const textarea = document.querySelector('[data-composer-input]');
+    return Boolean(textarea && textarea.isContentEditable && document.querySelector('button[data-dsh-nw-chip]'));
   })()`, { timeoutMs: 30000, label: 'standalone composer unlocked' });
 
   const composer = await driver.eval(`(() => {
-    const textarea = document.querySelector('textarea');
+    const textarea = document.querySelector('[data-composer-input]');
     const model = [...document.querySelectorAll('button')].find((b) => /选择模型|Select model/.test(b.innerText || ''));
     return {
-      readOnly: textarea.readOnly,
-      disabled: textarea.disabled,
-      placeholder: textarea.placeholder,
+      readOnly: !textarea.isContentEditable,
+      disabled: textarea.getAttribute('aria-disabled') === 'true',
+      placeholder: textarea.getAttribute('data-placeholder'),
       modelDisabled: model ? model.disabled : null,
     };
   })()`);
@@ -105,8 +106,8 @@ try {
   assert.equal(chipLayout.labelVisible, true, 'native workspace label remains visible');
   assert.ok(chipLayout.chevronLeft > chipLayout.labelLeft, 'chevron follows the label');
 
-  await driver.typeInto('textarea', 'E2E-DRAFT');
-  assert.equal(await driver.eval(`document.querySelector('textarea').value`), 'E2E-DRAFT');
+  await driver.typeInto('[data-composer-input]', 'E2E-DRAFT');
+  assert.equal(await driver.eval(`document.querySelector('[data-composer-input]').innerText.trim()`), 'E2E-DRAFT');
 
   await driver.click('button[data-dsh-nw-chip]');
   await driver.waitFor(`Boolean(document.querySelector('button[data-dsh-nw-picker-item]'))`, { label: 'native picker extension' });
@@ -145,15 +146,15 @@ try {
     const chip = [...document.querySelectorAll('button[aria-haspopup="menu"]')].find((b) => (b.innerText || '').includes(${JSON.stringify(workspaceTitle)}));
     return chip && !chip.hasAttribute('data-dsh-nw-chip');
   })()`, { timeoutMs: 30000, label: 'workspace selection' });
-  await driver.waitFor(`document.querySelector('textarea').value === 'E2E-DRAFT'`, { label: 'draft transfer' });
+  await driver.waitFor(`document.querySelector('[data-composer-input]').innerText.trim() === 'E2E-DRAFT'`, { label: 'draft transfer' });
   assert.equal(workspaceRecord().sessionIds.length, 1, 'workspace owns connected session');
 
   const realChip = await driver.boxWithText('button[aria-haspopup="menu"]', workspaceTitle);
   assert.ok(realChip);
   await driver.clickAt(realChip.x, realChip.y);
   await driver.clickText('button', await noWorkspaceLabel(driver));
-  await driver.waitFor(`Boolean(document.querySelector('button[data-dsh-nw-chip]') && !document.querySelector('textarea').readOnly)`, { timeoutMs: 30000, label: 'detach' });
-  await driver.waitFor(`document.querySelector('textarea').value === 'E2E-DRAFT'`, { label: 'draft retained after detach' });
+  await driver.waitFor(`Boolean(document.querySelector('button[data-dsh-nw-chip]') && document.querySelector('[data-composer-input]').isContentEditable)`, { timeoutMs: 30000, label: 'detach' });
+  await driver.waitFor(`document.querySelector('[data-composer-input]').innerText.trim() === 'E2E-DRAFT'`, { label: 'draft retained after detach' });
   assert.equal(workspaceRecord().sessionIds.length, 0, 'detached session leaves workspace index');
 
   const nativeChrome = await driver.eval(`(() => {

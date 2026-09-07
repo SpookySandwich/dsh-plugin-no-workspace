@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-no-workspace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Start and detach standalone chats without a mandatory workspace in DeepSeek Harness while preserving the native workspace UI.",
   "type": "module",
   "main": "lib/index.js",
@@ -36,8 +36,11 @@
   ],
   "scripts": {
     "build": "node scripts/build-client.mjs",
-    "test": "node scripts/build-client.mjs --check && node test/index.test.mjs && node test/robustness.test.mjs",
-    "test:e2e": "node scripts/e2e/run.mjs"
+    "pretest": "npm run build",
+    "prepack": "npm run build",
+    "test": "node scripts/build-client.mjs --check && node test/index.test.mjs && node test/robustness.test.mjs && node --test test/client-loading.test.mjs && node --test test/persistence.test.mjs && node --test test/client-interactions.test.mjs",
+    "test:e2e": "node scripts/e2e/run.mjs",
+    "check:package": "node scripts/check-package.mjs"
   },
   "dsh": {
     "bundle": {
@@ -45,7 +48,20 @@
     },
     "client": {
       "platform": "web",
-      "inject": []
+      "inject": [
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.2",
+    "jsdom": "^29.1.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }

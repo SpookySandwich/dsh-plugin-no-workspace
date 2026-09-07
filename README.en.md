@@ -7,9 +7,9 @@
 English · [简体中文](README.md)
 
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
-[![Release](https://img.shields.io/badge/release-v1.0.0-5b8cff?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.0.0)
-[![DSH](https://img.shields.io/badge/DSH-0.1.1--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
-[![Tests](https://img.shields.io/badge/tests-88%20passed-36b37e?style=flat-square)](#verification)
+[![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
+[![DSH](https://img.shields.io/badge/DSH-0.1.2--rc.1-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 True first-class workspace-free conversations for DeepSeek Harness, without replacing its native workspace experience.
@@ -43,7 +43,7 @@ Install from a local checkout or package:
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # or
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.0.0.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.0.1.tgz
 ```
 
 Restart DSH after installing or upgrading so both host and client code reload.
@@ -63,15 +63,19 @@ The host adds small endpoints for standalone creation and lossless detaching. Th
 ## Verification
 
 ```bash
+npm ci
 npm test
-npm run test:e2e
+npm run check:package
 ```
 
-The suite covers 88 unit and robustness cases plus real DSH desktop-profile flows for standalone creation, composer and model access, workspace switching, draft migration, detaching, flattened sidebar rendering, and native menu behavior. E2E cleanup restores the workspace store and removes only test-created sessions.
+Automated tests cover host behavior, client loading and persistence. Optional `npm run test:e2e` requires a fresh `dsh-no-workspace-e2e-*` directory under the system temporary directory as `DSH_HOME`, and `DSH_CLI_ENTRY` pointing to the official CLI JavaScript entry. Install the test profile separately; the runner refuses the regular DSH home.
 
 ## Compatibility
 
-Verified against DSH `0.1.1-rc.2`. It coexists with client plugins including `dsh-plugin-message-edit`, `dsh-plugin-marginalia`, and `dsh-plugin-rollout-scout`.
+This release targets DSH `0.1.2-rc.1`. Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
+
+
+Updated for DSH `0.1.2-rc.1`. Standalone persistence and workspace detachment were checked in an isolated Web runtime; automated tests cover client loading.
 
 ## License
 
