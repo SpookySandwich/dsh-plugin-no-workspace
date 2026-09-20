@@ -24,16 +24,21 @@ function harness(t) {
     },
   });
   const entry = { options: { priority: 0 }, component: function NativePicker() {} };
+  const nativeSidebar = function NativeSidebar() {};
+  const sidebar = { options: { priority: 0 }, component: nativeSidebar };
+  const nativeStarts = [];
   const ctx = {
     sessions: { list: { getSnapshot: () => sessionSnapshot, subscribe }, open: id => opened.push(id) },
     workspaces: { list: { getSnapshot: () => workspaceSnapshot, subscribe } },
     slots: { inject(_name, register) { register(); },
-      entries: name => name === 'conversation.hero.workspace' ? [entry] : [], subscribe: () => () => {} },
+      entries: name => name === 'conversation.hero.workspace' ? [entry] : name === 'sidebar' ? [sidebar] : [], subscribe: () => () => {} },
   };
   const dispose = plugin.apply(ctx);
   t.after(() => { dispose(); dom.window.close(); });
   return {
     requests, opened, listeners,
+    nativeStarts,
+    start(workspaceId) { sidebar.component({ startSession: id => nativeStarts.push(id) }).props.startSession(workspaceId); },
     pick(id) { entry.component({ useWorkspaces: select => select(workspaceSnapshot), onPick() {}, onClose() {} }).props.onPick(id); },
     update(sessions, workspaces) {
       if (sessions) sessionSnapshot = sessions;
@@ -50,6 +55,15 @@ test('No Workspace selection reaches the host when the workspace feed is behind 
   await tick();
   assert.deepEqual(h.requests, [{ url: '/no-workspace/detach', body: { sessionId: 'selected' } }]);
   assert.deepEqual(h.opened, ['selected']);
+});
+
+test('sidebar adapts already-injected props and preserves native workspace creation', async t => {
+  const h = harness(t);
+  h.start('workspace');
+  assert.deepEqual(h.nativeStarts, ['workspace']);
+  h.start(undefined);
+  await tick();
+  assert.equal(h.requests[0].url, '/no-workspace/create');
 });
 
 test('a quick No Workspace pick waits for native workspace navigation and detaches its destination', async t => {

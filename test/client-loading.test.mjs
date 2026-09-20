@@ -11,11 +11,11 @@ const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url),
 const bundle = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8');
 const expectedSlots = {
   'dsh-plugin-smooth-stream': ['conversation.chat.node', 'settings.section'],
-  'dsh-plugin-no-workspace': ['sidebar', 'conversation.composer.bar', 'conversation.hero.workspace'],
+  'dsh-plugin-no-workspace': ['sidebar', 'sidebar.workspaces', 'conversation.composer.bar', 'conversation.hero.workspace'],
   'dsh-plugin-rollout-scout': ['sidebar.footer.action', 'shell.overlay'],
 };
 const requiredModules = {
-  slots: '@deepseek-ai/dsh-client-ui-slots',
+  slots: '@deepseek-ai/dsh-client-ui-renderer',
   sessions: '@deepseek-ai/dsh-api-session-controller',
   workspaces: '@deepseek-ai/dsh-api-workspace-controller',
   locale: '@deepseek-ai/dsh-client-locale',

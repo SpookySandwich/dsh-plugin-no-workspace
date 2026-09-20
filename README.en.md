@@ -9,7 +9,7 @@ English · [简体中文](README.md)
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
 [![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
-[![DSH](https://img.shields.io/badge/DSH-0.1.2--rc.1-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![DSH](https://img.shields.io/badge/DSH-0.1.5--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 True first-class workspace-free conversations for DeepSeek Harness, without replacing its native workspace experience.
@@ -43,7 +43,7 @@ Install from a local checkout or package:
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # or
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.0.1.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.1.0.tgz
 ```
 
 Restart DSH after installing or upgrading so both host and client code reload.
@@ -72,10 +72,16 @@ Automated tests cover host behavior, client loading and persistence. Optional `n
 
 ## Compatibility
 
-This release targets DSH `0.1.2-rc.1`. Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
+Version `1.1.0`: Create durable standalone chats through the native Session Controller. Adapt sidebar component props instead of cached injection results, including the split workspace sidebar.
+
+The declared host range is `>=0.1.5-rc.2 <0.1.6-0`; the official `0.1.5-rc.2` runtime was verified. DSH `0.1.6` alpha is not claimed compatible. Keep the previous plugin release on older DSH. [Validation record](.github/reviews/dsh-0.1.5.md).
+
+Download the archive from the [GitHub Release](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.1.0), then run `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.1.0.tgz`.
+
+This release targets DSH `0.1.5-rc.2`. Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
 
 
-Updated for DSH `0.1.2-rc.1`. Standalone persistence and workspace detachment were checked in an isolated Web runtime; automated tests cover client loading.
+Updated for DSH `0.1.5-rc.2`. Standalone persistence and workspace detachment were checked in an isolated Web runtime; automated tests cover client loading.
 
 ## License
 
