@@ -9,7 +9,7 @@
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
 [![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
-[![DSH](https://img.shields.io/badge/DSH-0.1.5--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![DSH](https://img.shields.io/badge/DSH-0.2.0--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 为 DeepSeek Harness 添加真正的一等「无工作区」会话，同时保留原生工作区体验。
@@ -72,16 +72,18 @@ npm run check:package
 
 ## 兼容性
 
+版本 `1.2.0`：可在官方 dsh `0.2.0-rc.2` 上加载。独立会话仍通过原生 Session Controller 创建，移出工作区仍调用 `workspace.detachSession`。
+
 版本 `1.1.0`：通过原生 Session Controller 创建可持久恢复的独立会话；适配侧边栏组件属性与拆分后的工作区入口，避免修改已缓存的注入结果。
 
-声明兼容范围为 `>=0.1.5-rc.2 <0.1.6-0`；已验证官方 `0.1.5-rc.2`，不声明兼容 `0.1.6` alpha。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.1.5.md)。
+声明兼容范围为 `>=0.2.0-rc.2 <0.3.0-0`；官方 dsh `0.2.0-rc.2` 满足该范围。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.1.5.md)。
 
-可从 [GitHub Release](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.1.0) 下载发布包，然后执行 `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.1.0.tgz`。
+可从 [GitHub Release](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.2.0) 下载发布包，然后执行 `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.0.tgz`。
 
-本次兼容目标为 DSH `0.1.5-rc.2`。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
+本次兼容目标为 DSH `0.2.0-rc.2`。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
 
 
-已适配 DSH `0.1.5-rc.2`。在隔离 Web 环境验证空会话持久化和移出工作区；客户端加载有自动化测试。
+`1.1.0` 曾在 DSH `0.1.5-rc.2` 的隔离 Web 环境验证空会话持久化和移出工作区。客户端加载有自动化测试。
 
 ## License
 
