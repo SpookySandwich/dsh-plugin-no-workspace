@@ -9,7 +9,7 @@ English · [简体中文](README.md)
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
 [![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
-[![DSH](https://img.shields.io/badge/DSH-0.1.5--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![DSH](https://img.shields.io/badge/DSH-0.2.0--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 True first-class workspace-free conversations for DeepSeek Harness, without replacing its native workspace experience.
@@ -26,7 +26,8 @@ DSH normally places every conversation in a workspace, or renders unassigned con
 
 | Scenario | With this plugin |
 | --- | --- |
-| Click the global **New Session** button | Creates a standalone conversation without inheriting a workspace |
+| Click the global **New Session** button, or the window-chrome one | Creates a standalone conversation without inheriting a workspace |
+| Press the New Session accelerator | Creates a standalone conversation too, following whatever keys you rebound it to |
 | Choose **No Workspace** in the native picker | Detaches the current conversation without losing history |
 | Collapse a real workspace | Standalone conversations remain visible at the top level |
 | Open an empty standalone conversation | Composer, model picker, attachments, and send are immediately available |
@@ -43,7 +44,7 @@ Install from a local checkout or package:
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # or
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.1.0.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.0.tgz
 ```
 
 Restart DSH after installing or upgrading so both host and client code reload.
@@ -58,7 +59,7 @@ Restart DSH after installing or upgrading so both host and client code reload.
 
 ## How it works
 
-The host adds small endpoints for standalone creation and lossless detaching. The client changes only three behaviors: global session creation, the composer gate for standalone sessions, and the native workspace picker. Icons, disclosure arrows, menu placement, and session rows continue to use DSH's native layout and interactions.
+The host adds small endpoints for standalone creation and lossless detaching. The client changes only every entry point into New Session (sidebar, window-chrome control, and the rebindable accelerator), the composer gate for standalone sessions, and the native workspace picker. Icons, disclosure arrows, menu placement, and session rows continue to use DSH's native layout and interactions.
 
 ## Verification
 
@@ -72,16 +73,16 @@ Automated tests cover host behavior, client loading and persistence. Optional `n
 
 ## Compatibility
 
-Version `1.1.0`: Create durable standalone chats through the native Session Controller. Adapt sidebar component props instead of cached injection results, including the split workspace sidebar.
+Version `1.2.0`: DSH `0.2.0-rc.2` compatibility. The window-chrome New Session control (`shell.leading`) and the rebindable New Session accelerator both join the standalone path, and the previously used public contracts were confirmed free of breaking changes.
 
-The declared host range is `>=0.1.5-rc.2 <0.1.6-0`; the official `0.1.5-rc.2` runtime was verified. DSH `0.1.6` alpha is not claimed compatible. Keep the previous plugin release on older DSH. [Validation record](.github/reviews/dsh-0.1.5.md).
+The declared range is `>=0.1.5-rc.2 <0.1.6-0 || ^0.2.0-rc.1`: the first clause is unchanged from `1.1.0`, so no host that was previously accepted is dropped, and the second adds `0.2.0-rc.1` onwards through the `0.2.x` prereleases. `0.3.0` and the `0.1.6` alpha are not claimed. A prerelease is only matched by a comparator that names the same tuple, so the new line is appended as a union member rather than absorbed by a wider upper bound — `>=0.1.5-rc.2 <0.3.0-0` does not reach `0.2.0-rc.2` either. [Validation record](.github/reviews/dsh-0.2.0.md).
 
-Download the archive from the [GitHub Release](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.1.0), then run `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.1.0.tgz`.
+Download the archive from the [GitHub Release](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.2.0), then run `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.0.tgz`.
 
-This release targets DSH `0.1.5-rc.2`. Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
+This release targets DSH `0.2.0-rc.2`. Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
 
 
-Updated for DSH `0.1.5-rc.2`. Standalone persistence and workspace detachment were checked in an isolated Web runtime; automated tests cover client loading.
+Updated for DSH `0.2.0-rc.2`. This review is a package-by-package source comparison plus automated regression tests; the live desktop and browser checks that were not performed are listed under "not exercised" in the validation record.
 
 ## License
 
