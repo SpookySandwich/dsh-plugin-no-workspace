@@ -43,14 +43,14 @@ Install from a local checkout or package:
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # or
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.1.0.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.1.tgz
 ```
 
 Restart DSH after installing or upgrading so both host and client code reload.
 
 ## Design principles
 
-- **Keep the native sidebar** — wrap DSH's registered slots instead of replacing navigation.
+- **Keep the native sidebar** — adapt the shared creation action while retaining DSH's components and shortcut dispatch.
 - **Never invent a folder** — hide only the synthetic “Ungrouped” container; real workspaces retain their native structure.
 - **Preserve conversation data** — detaching updates only workspace indexes, keeping events, drafts, and context intact.
 - **Use a neutral working directory** — new standalone conversations start from the user's home directory.
@@ -68,17 +68,19 @@ npm test
 npm run check:package
 ```
 
-Automated tests cover host behavior, client loading and persistence. Optional `npm run test:e2e` requires a fresh `dsh-no-workspace-e2e-*` directory under the system temporary directory as `DSH_HOME`, and `DSH_CLI_ENTRY` pointing to the official CLI JavaScript entry. Install the test profile separately; the runner refuses the regular DSH home.
+Automated tests cover host behavior, the DSH 0.2 navigation contract, and persistence. `npm run test:e2e` creates and removes its own temporary Web profile and headless browser. It checks real session creation, the native Web shortcut, explicit workspace selection, draft transfer, and detachment. Set `DSH_QA_MODULES` to an official DSH `0.2.0-rc.2` node_modules directory if it is outside this checkout; set `DSH_QA_BROWSER` to a Chromium/Edge executable if needed. Windows CI runs this test. Results are written to `scratch/e2e-current/`. No existing DSH profile is used.
 
 ## Compatibility
 
-Version `1.2.0`: Load on official dsh `0.2.0-rc.2`. Session creation still goes through the native Session Controller, and detach still calls `workspace.detachSession`.
+Version `1.2.1` (current source): Adapt shared `uiWorkspace.startSession` for sidebar, title-bar, and native shortcut actions. Resolve the current conversation from main-view retention and restore native navigation when the plugin unloads.
+
+Version `1.2.0`: Update the declared host target to official dsh `0.2.0-rc.2`. Session creation still goes through the native Session Controller, and detach still calls `workspace.detachSession`.
 
 Version `1.1.0`: Create durable standalone chats through the native Session Controller. Adapt sidebar component props instead of cached injection results, including the split workspace sidebar.
 
 The declared host range is `>=0.2.0-rc.2 <0.3.0-0`; official dsh `0.2.0-rc.2` satisfies it. Keep the previous plugin release on older DSH. [Validation record](.github/reviews/dsh-0.1.5.md).
 
-Download the archive from the [GitHub Release](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.2.0), then run `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.0.tgz`.
+Install published versions from [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace). To test the current source, run `npm ci` and `npm pack`, then `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.1.tgz`. See the [release procedure](.github/RELEASING.md) for publication checks.
 
 This release targets DSH `0.2.0-rc.2`. Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
 

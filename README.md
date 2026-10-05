@@ -43,14 +43,14 @@ dsh plugin --profile desktop add dsh-plugin-no-workspace
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # 或
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.1.0.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.1.tgz
 ```
 
 安装或升级后重启 DSH，使宿主端和客户端代码同时重新加载。
 
 ## 设计原则
 
-- **不替换原生侧边栏**：插件包装 DSH 已注册的槽位，而不是重写整套导航。
+- **不替换原生侧边栏**：插件适配共享的新建动作，保留原生组件及快捷键分发。
 - **不伪造文件夹**：只隐藏独立会话外层的「未分组」容器；真实工作区仍保留原生文件夹结构。
 - **不损坏历史**：解绑只更新工作区会话索引，完整保留会话事件、草稿与上下文。
 - **不污染执行目录**：新独立会话使用用户主目录作为中性的执行目录。
@@ -68,17 +68,19 @@ npm test
 npm run check:package
 ```
 
-测试覆盖单元与健壮性用例、新版客户端依赖和会话持久化。可选 `npm run test:e2e` 需要先创建系统临时目录下的 `dsh-no-workspace-e2e-*` 测试目录，将 `DSH_HOME` 指向它，并设置 `DSH_CLI_ENTRY` 为官方 `@deepseek-ai/dsh/lib/bin.js` 路径。测试 profile 需单独安装本插件；脚本拒绝操作日常使用的 DSH 目录。
+自动测试覆盖宿主行为、DSH 0.2 导航契约及持久化。`npm run test:e2e` 会自行创建并清理临时 Web profile 和无头浏览器，验证真实会话创建、原生 Web 快捷键、显式工作区选择、草稿转移及解绑。若官方 DSH `0.2.0-rc.2` 不在当前项目依赖中，请通过 `DSH_QA_MODULES` 指定其 node_modules；也可通过 `DSH_QA_BROWSER` 指定 Chromium/Edge 路径。Windows CI 会运行此测试，结果保存在 `scratch/e2e-current/`，不会使用日常 DSH profile。
 
 ## 兼容性
 
-版本 `1.2.0`：可在官方 dsh `0.2.0-rc.2` 上加载。独立会话仍通过原生 Session Controller 创建，移出工作区仍调用 `workspace.detachSession`。
+版本 `1.2.1`（当前源码）：统一适配 `uiWorkspace.startSession`，覆盖侧边栏、标题栏和原生快捷键入口；通过主视图保留信息定位当前会话，并在插件卸载时恢复原生导航。
+
+版本 `1.2.0`：将声明的宿主兼容目标更新为官方 dsh `0.2.0-rc.2`。独立会话仍通过原生 Session Controller 创建，移出工作区仍调用 `workspace.detachSession`。
 
 版本 `1.1.0`：通过原生 Session Controller 创建可持久恢复的独立会话；适配侧边栏组件属性与拆分后的工作区入口，避免修改已缓存的注入结果。
 
 声明兼容范围为 `>=0.2.0-rc.2 <0.3.0-0`；官方 dsh `0.2.0-rc.2` 满足该范围。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.1.5.md)。
 
-可从 [GitHub Release](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/tag/v1.2.0) 下载发布包，然后执行 `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.0.tgz`。
+已发布版本可从 [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace) 安装。测试当前源码时，先运行 `npm ci` 和 `npm pack`，再运行 `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.1.tgz`。发布完整性检查见 [发布流程](.github/RELEASING.md)。
 
 本次兼容目标为 DSH `0.2.0-rc.2`。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
 
