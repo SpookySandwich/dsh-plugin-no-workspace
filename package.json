@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-no-workspace",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Start and detach standalone chats without a mandatory workspace in DeepSeek Harness while preserving the native workspace UI.",
   "type": "module",
   "main": "lib/index.js",
@@ -39,8 +39,9 @@
     "pretest": "npm run build",
     "prepack": "npm run build",
     "test": "node scripts/build-client.mjs --check && node test/index.test.mjs && node test/robustness.test.mjs && node --test test/client-loading.test.mjs && node --test test/persistence.test.mjs && node --test test/client-interactions.test.mjs",
-    "test:e2e": "node scripts/e2e/run.mjs",
-    "check:package": "node scripts/check-package.mjs"
+    "test:e2e": "node scripts/build-client.mjs && node scripts/e2e/acceptance.mjs",
+    "check:package": "node scripts/check-package.mjs",
+    "check:release": "node scripts/verify-release.mjs"
   },
   "dsh": {
     "bundle": {
