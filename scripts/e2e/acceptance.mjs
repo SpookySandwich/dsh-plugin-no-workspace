@@ -72,10 +72,12 @@ try {
   await driver.waitFor(`document.body.innerText.includes('Preview Notice')`, { timeoutMs: 60000, label: 'client boot' });
   await driver.clickText('button', 'Continue');
   await driver.waitFor(`!document.body.innerText.includes('Preview Notice')`, { label: 'welcome acknowledgement' });
-  if (await driver.eval(`document.body.innerText.includes('Configure later')`)) {
-    await driver.clickText('button', 'Configure later');
-    await driver.waitFor(`!document.body.innerText.includes('Configure later')`, { label: 'provider onboarding' });
-  }
+  // This fresh profile has no provider credentials. DSH loads the provider
+  // settings after the welcome step, rendering nothing while that load runs.
+  await driver.clickText('button', 'Configure later', { timeoutMs: 60000 });
+  await driver.waitFor(`!document.querySelector('[role="dialog"][aria-modal="true"]') && document.getElementById('root')?.inert === false`, {
+    label: 'provider onboarding released keyboard ownership',
+  });
   const noWorkspace = `[...document.querySelectorAll('button[data-dsh-nw-chip]')].some(b=>b.innerText.trim()==='No Workspace')`;
   const inWorkspace = `[...document.querySelectorAll('button[aria-haspopup="menu"]')].some(b=>b.innerText.trim()==='No Workspace acceptance')`;
   await driver.eval(`[...document.querySelectorAll('button[aria-label="New session"]')].find(b=>b.getBoundingClientRect().width>0).click()`);
