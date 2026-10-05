@@ -1,0 +1,9 @@
+{
+  "package": "dsh-plugin-no-workspace",
+  "version": "1.2.1",
+  "sourceCommit": "9c70aa4fc5615a1e419d1d84050813f77b00ffbb",
+  "integrity": "sha512-0HYg7DyN0W9lkBUccxflMIEbA1vg347+8fJqV7oVukiJlssHQFS/kcCSCK/VUJfoXrSQ9YNxrE1zVDiUIKiWbg==",
+  "reason": "npm-10.9.3-linked-worktree-gitHead-omission",
+  "reproducedFromNormalClone": true,
+  "verification": "A fresh normal clone at sourceCommit ran npm pack, including its build lifecycle; its archive exactly matched the downloaded npm artifact and this SHA-512 integrity. Verified 2026-10-05."
+}
