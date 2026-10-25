@@ -19,6 +19,7 @@ const requiredModules = {
   sessions: '@deepseek-ai/dsh-api-session-controller',
   workspaces: '@deepseek-ai/dsh-api-workspace-controller',
   uiWorkspace: '@deepseek-ai/dsh-client-ui-workspace',
+  conversation: '@deepseek-ai/dsh-client-ui-conversation',
   locale: '@deepseek-ai/dsh-client-locale',
   modules: '@deepseek-ai/dsh-client-modules',
   timer: '@deepseek-ai/dsh-cordis-client-runner',
@@ -53,7 +54,7 @@ test('client waits for its declared DSH services and registers after they become
   const services = {
     slots, sessions: { list: { subscribe: () => () => {}, getSnapshot: () => ({ ids: [], byId: {} }) } },
     workspaces: { list: { subscribe: () => () => {}, getSnapshot: () => ({ items: [] }) } },
-    locale: {}, modules: {}, timer: {},
+    locale: {}, modules: {}, timer: {}, conversation: {},
   };
   const fiber = ctx.plugin(plugin);
   await new Promise(resolve => setImmediate(resolve));

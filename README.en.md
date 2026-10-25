@@ -9,7 +9,7 @@ English · [简体中文](README.md)
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
 [![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
-[![DSH](https://img.shields.io/badge/DSH-0.2.0--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 True first-class workspace-free conversations for DeepSeek Harness, without replacing its native workspace experience.
@@ -43,7 +43,7 @@ Install from a local checkout or package:
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # or
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.1.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.3.0.tgz
 ```
 
 Restart DSH after installing or upgrading so both host and client code reload.
@@ -68,21 +68,23 @@ npm test
 npm run check:package
 ```
 
-Automated tests cover host behavior, the DSH 0.2 navigation contract, and persistence. `npm run test:e2e` creates and removes its own temporary Web profile and headless browser. It checks real session creation, the native Web shortcut, explicit workspace selection, draft transfer, and detachment. Set `DSH_QA_MODULES` to an official DSH `0.2.0-rc.2` node_modules directory if it is outside this checkout; set `DSH_QA_BROWSER` to a Chromium/Edge executable if needed. Windows CI runs this test. Results are written to `scratch/e2e-current/`. No existing DSH profile is used.
+Automated tests cover host behavior, the DSH 0.2 navigation contract, and persistence. `npm run test:e2e` creates and removes its own temporary Web profile and headless browser. It checks real session creation, Agent Preset Creator and draft-initialization options, the native Web shortcut, explicit workspace selection, draft transfer, and detachment. Set `DSH_QA_MODULES` to an official DSH `0.2.1-rc.2` (or `0.2.0-rc.2`) node_modules directory if it is outside this checkout; set `DSH_QA_BROWSER` to a Chromium/Edge executable if needed. Windows CI runs this test. Results are written to `scratch/e2e-current/`. No existing DSH profile is used.
 
 ## Compatibility
 
-Version `1.2.1` (current source): Adapt shared `uiWorkspace.startSession` for sidebar, title-bar, and native shortcut actions. Resolve the current conversation from main-view retention and restore native navigation when the plugin unloads.
+Version `1.3.0` (current source): Admit official dsh `0.2.1-rc.2` in declared compatibility ranges while retaining `0.2.0-rc.2` support. Keep untargeted `uiWorkspace.startSession` calls with `agentPreset`, `prompt`, and `clearPreviousDraft` options standalone instead of inheriting a workspace: reuse only the currently selected eligible standalone blank for preset creation (such as the Settings Agent Preset Creator flow) via host `/create` with `sessionId`, `agentPreset`, and `cwd` while respecting the returned session ID, coalesce identical concurrent option requests, and route standalone draft preparation through `conversation.input.requestDraftInitialization` with localized Chinese/English blocked-draft notices. Plain no-options **New Session** now always creates a fresh default-preset standalone blank (matching native DSH `0.2.1-rc.2` and avoiding leftover Creator-mode blanks; on `0.2.0-rc.2`, repeated plain **New Session** presses also create new empty standalone sessions rather than reusing an existing blank; programmatic draft-only global calls without `agentPreset` reuse the current eligible standalone blank as-is, retaining its existing preset if a leftover Creator-mode blank is still selected).
+
+Version `1.2.1`: Adapt shared `uiWorkspace.startSession` for sidebar, title-bar, and native shortcut actions. Resolve the current conversation from main-view retention and restore native navigation when the plugin unloads.
 
 Version `1.2.0`: Update the declared host target to official dsh `0.2.0-rc.2`. Session creation still goes through the native Session Controller, and detach still calls `workspace.detachSession`.
 
 Version `1.1.0`: Create durable standalone chats through the native Session Controller. Adapt sidebar component props instead of cached injection results, including the split workspace sidebar.
 
-The declared host range is `>=0.2.0-rc.2 <0.3.0-0`; official dsh `0.2.0-rc.2` satisfies it. Keep the previous plugin release on older DSH. [Validation record](.github/reviews/dsh-0.1.5.md).
+The declared host range is `>=0.2.0-rc.2 <0.3.0-0 || 0.2.1-rc.2`; official dsh `0.2.0-rc.2` and `0.2.1-rc.2` satisfy it. Keep the previous plugin release on older DSH. [Validation record](.github/reviews/dsh-0.1.5.md).
 
-Install published versions from [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace). To test the current source, run `npm ci` and `npm pack`, then `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.2.1.tgz`. See the [release procedure](.github/RELEASING.md) for publication checks.
+Install published versions from [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace). To test the current source, run `npm ci` and `npm pack`, then `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.3.0.tgz`. See the [release procedure](.github/RELEASING.md) for publication checks.
 
-This release targets DSH `0.2.0-rc.2`. Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
+This release targets DSH `0.2.1-rc.2` (compatible with `0.2.0-rc.2`). Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
 
 
 Version `1.1.0` checked standalone persistence and workspace detachment on DSH `0.1.5-rc.2`. Automated tests cover client loading.

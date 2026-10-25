@@ -12,12 +12,16 @@ const main = id => summary(id, { retainedBy: { mainView: 1 } });
 const workspace = (workspaceId, ...sessionIds) => ({ workspaceId, sessionIds });
 const response = value => ({ ok: true, json: async () => ({ ok: true, ...value }) });
 
-function harness(t, { request } = {}) {
+function harness(t, { request, draftResult = 'applied', locale = 'en' } = {}) {
   const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>', { url: 'https://qa.test/' });
+  dom.window.document.documentElement.lang = locale;
   let plugin;
   const requests = [];
   const opened = [];
   const errors = [];
+  const drafts = [];
+  const notices = [];
+  const retained = new Set();
   let sessionSnapshot = sessions(main('selected'));
   let workspaceSnapshot = { phase: 'ready', items: [], archivedSessionIds: [] };
   const listeners = new Set();
@@ -37,10 +41,12 @@ function harness(t, { request } = {}) {
   const nativeSidebar = function NativeSidebar() {};
   const sidebar = { options: { priority: 0 }, component: nativeSidebar };
   const nativeStarts = [];
+  const nativeOptions = [];
   const nativeReceivers = [];
   const uiWorkspace = Object.create({
-    startSession(workspaceId) { nativeStarts.push(workspaceId); nativeReceivers.push(this); return 'native-result'; },
+    startSession(workspaceId, options) { nativeStarts.push(workspaceId); nativeOptions.push(options); nativeReceivers.push(this); return 'native-result'; },
     openSession(id) { opened.push(id); },
+    notify(notice) { notices.push(notice); },
   });
   const originalStart = uiWorkspace.startSession;
   // DSH caches these closures before third-party plugins load. Every route
@@ -55,7 +61,18 @@ function harness(t, { request } = {}) {
   const entries = { sidebar, 'shell.leading': sidebar, 'conversation.hero.workspace': entry, 'conversation.composer.bar': composer };
   const ctx = {
     effect(setup) { return setup(); },
-    sessions: { list: { getSnapshot: () => sessionSnapshot, subscribe } },
+    sessions: {
+      list: { getSnapshot: () => sessionSnapshot, subscribe },
+      retain(id) {
+        retained.add(id);
+        return { binding: { sessionId: id }, release() { retained.delete(id); } };
+      },
+    },
+    conversation: { input: { requestDraftInitialization(binding, options) {
+      assert.ok(retained.has(binding.sessionId));
+      drafts.push({ sessionId: binding.sessionId, ...options });
+      return draftResult;
+    } } },
     workspaces: { list: { getSnapshot: () => workspaceSnapshot, subscribe } },
     uiWorkspace,
     slots: { inject(_name, register) { register(); }, entries: name => entries[name] ? [entries[name]] : [], subscribe: () => () => {} },
@@ -63,11 +80,11 @@ function harness(t, { request } = {}) {
   const disposers = [plugin.apply(ctx)];
   t.after(() => { disposers.reverse().forEach(dispose => dispose()); dom.window.close(); });
   return {
-    requests, opened, listeners, errors, nativeStarts, nativeReceivers, uiWorkspace, originalStart, routes,
-    sidebar, nativeSidebar, composer,
+    requests, opened, listeners, errors, nativeStarts, nativeOptions, nativeReceivers, uiWorkspace, originalStart, routes,
+    sidebar, nativeSidebar, composer, drafts, notices, retained,
     dispose: () => disposers[0](),
     reapply() { const dispose = plugin.apply(ctx); disposers.push(dispose); return dispose; },
-    start(workspaceId) { return uiWorkspace.startSession(workspaceId); },
+    start(workspaceId, options) { return uiWorkspace.startSession(workspaceId, options); },
     pick(id, onPick = () => {}) {
       return entry.component({ useWorkspaces: select => select(workspaceSnapshot), onPick, onClose() {} }).props.onPick(id);
     },
@@ -106,15 +123,148 @@ test('explicit workspace creation preserves the native receiver and return value
   assert.deepEqual(h.requests, []);
 });
 
-test('a standalone blank is reused without reusing attached, archived or subagent conversations', async t => {
+for (const hasWorkspace of [false, true]) {
+  test(`preset and draft creation stays standalone with workspace=${hasWorkspace}`, async t => {
+    const h = harness(t);
+    h.update(sessions(main('selected'), summary('standalone', { blank: true })),
+      { items: hasWorkspace ? [workspace('current', 'selected')] : [] });
+    await h.start(undefined, { agentPreset: 'cordis', prompt: 'Prepare this draft', clearPreviousDraft: true });
+    assert.deepEqual(h.requests, [{ url: '/no-workspace/create', body: { agentPreset: 'cordis' } }]);
+    assert.deepEqual(h.nativeStarts, []);
+    assert.deepEqual(h.opened, ['created']);
+    assert.deepEqual(h.drafts, [{ sessionId: 'created', prompt: 'Prepare this draft', clearPreviousDraft: true }]);
+    assert.equal(h.retained.size, 0);
+  });
+}
+
+test('preset helper without initial text creates a fresh standalone with the requested preset', async t => {
+  const h = harness(t);
+  h.update(sessions(summary('other-preset', { blank: true })));
+  await h.start(undefined, { agentPreset: 'cordis', clearPreviousDraft: false });
+  assert.deepEqual(h.requests, [{ url: '/no-workspace/create', body: { agentPreset: 'cordis' } }]);
+  assert.deepEqual(h.opened, ['created']);
+  assert.deepEqual(h.drafts, []);
+});
+
+for (const clearPreviousDraft of [false, true]) {
+  test(`draft-only requests reuse standalone blanks and pass clearPreviousDraft=${clearPreviousDraft}`, async t => {
+    const h = harness(t, { draftResult: clearPreviousDraft ? 'applied' : 'preserved' });
+    h.update(sessions(summary('attached', { blank: true }), summary('standalone', { blank: true })),
+      { items: [workspace('recent', 'attached')] });
+    await h.start(undefined, { prompt: 'Requested draft', clearPreviousDraft });
+    assert.deepEqual(h.requests, []);
+    assert.deepEqual(h.opened, ['standalone']);
+    assert.deepEqual(h.drafts, [{ sessionId: 'standalone', prompt: 'Requested draft', clearPreviousDraft }]);
+    assert.deepEqual(h.notices, []);
+    assert.equal(h.retained.size, 0);
+  });
+}
+
+test('blocked draft initialization shows a creation refusal and leaves the current view selected', async t => {
+  const h = harness(t, { draftResult: 'blocked' });
+  await h.start(undefined, { prompt: 'Requested draft' });
+  assert.deepEqual(h.opened, []);
+  assert.equal(h.notices[0].kind, 'createFailed');
+  assert.match(h.notices[0].message, /Could not fill the draft/);
+  assert.equal(h.retained.size, 0);
+});
+
+test('different concurrent preset requests retain their own creation and draft options', async t => {
+  let count = 0;
+  const h = harness(t, { request: async () => response({ sessionId: `created-${++count}` }) });
+  await Promise.all(['first', 'second'].map(agentPreset => h.start(undefined, { agentPreset, prompt: agentPreset })));
+  assert.deepEqual(h.requests.map(r => r.body.agentPreset), ['first', 'second']);
+  assert.deepEqual(h.drafts.map(d => [d.sessionId, d.prompt]), [['created-1', 'first'], ['created-2', 'second']]);
+});
+
+test('late preset creation after disposal cannot prepare a draft or navigate', async t => {
+  let complete;
+  const h = harness(t, { request: () => new Promise(resolve => { complete = resolve; }) });
+  const pending = h.start(undefined, { agentPreset: 'cordis', prompt: 'late' });
+  await tick();
+  h.dispose();
+  complete(response({ sessionId: 'late' }));
+  await pending;
+  assert.deepEqual(h.opened, []);
+  assert.deepEqual(h.drafts, []);
+});
+
+test('explicit workspace creation forwards DSH draft/preset options', t => {
+  const h = harness(t);
+  const options = { agentPreset: 'cordis', clearPreviousDraft: false };
+  assert.equal(h.start('workspace', options), 'native-result');
+  assert.deepEqual(h.nativeStarts, ['workspace']);
+  assert.equal(h.nativeOptions[0], options);
+  assert.equal(h.nativeReceivers[0], h.uiWorkspace);
+  assert.deepEqual(h.requests, []);
+});
+
+test('draft requests reuse a standalone blank without reusing attached, archived or subagent conversations', async t => {
   const h = harness(t);
   h.update(sessions(
     summary('attached', { blank: true }), summary('archived', { blank: true }),
     summary('child', { blank: true, origin: 'subagent' }), summary('standalone', { blank: true }),
   ), { items: [workspace('workspace', 'attached')], archivedSessionIds: ['archived'] });
-  await h.start();
+  await h.start(undefined, { prompt: 'Draft' });
   assert.deepEqual(h.requests, []);
   assert.deepEqual(h.opened, ['standalone']);
+});
+
+test('preset helper reuses only the current eligible standalone blank through the host', async t => {
+  const h = harness(t, { request: async (_url, options) => response({ sessionId: JSON.parse(options.body).sessionId }) });
+  h.update(sessions(summary('other-blank', { blank: true }), summary('selected', { blank: true, cwd: '/detached/project', retainedBy: { mainView: 1 } })));
+  await h.start(undefined, { agentPreset: 'cordis', clearPreviousDraft: false });
+  assert.deepEqual(h.requests, [{ url: '/no-workspace/create', body: { sessionId: 'selected', cwd: '/detached/project', agentPreset: 'cordis' } }]);
+  assert.deepEqual(h.opened, ['selected']);
+  assert.deepEqual(h.nativeStarts, []);
+});
+
+for (const kind of ['attached', 'archived', 'subagent', 'started']) {
+  test(`preset request cannot adopt the current ${kind} session or another blank`, async t => {
+    const h = harness(t);
+    h.update(sessions(summary('other', { blank: true }), summary('selected', {
+      blank: kind !== 'started', origin: kind === 'subagent' ? 'subagent' : undefined, retainedBy: { mainView: 1 },
+    })), { items: kind === 'attached' ? [workspace('current', 'selected')] : [], archivedSessionIds: kind === 'archived' ? ['selected'] : [] });
+    await h.start(undefined, { agentPreset: 'cordis' });
+    assert.deepEqual(h.requests, [{ url: '/no-workspace/create', body: { agentPreset: 'cordis' } }]);
+  });
+}
+
+test('host refusal to reuse a stale blank opens the actual returned session', async t => {
+  const h = harness(t);
+  h.update(sessions(summary('selected', { blank: true, retainedBy: { mainView: 1 } })));
+  await h.start(undefined, { agentPreset: 'cordis', prompt: 'New draft' });
+  assert.equal(h.requests[0].body.sessionId, 'selected');
+  assert.deepEqual(h.opened, ['created']);
+  assert.equal(h.drafts[0].sessionId, 'created');
+});
+
+test('plain New Session creates a default blank instead of reopening a leftover Creator blank', async t => {
+  const h = harness(t);
+  h.update(sessions(summary('creator', { blank: true, projectionValues: { agentPreset: 'cordis' }, retainedBy: { mainView: 1 } })));
+  await h.start();
+  assert.deepEqual(h.requests, [{ url: '/no-workspace/create', body: {} }]);
+  assert.deepEqual(h.opened, ['created']);
+});
+
+test('identical concurrent preset requests share one host creation and navigation', async t => {
+  let complete;
+  const h = harness(t, { request: () => new Promise(resolve => { complete = resolve; }) });
+  const options = { agentPreset: 'cordis', clearPreviousDraft: false };
+  const first = h.start(undefined, options);
+  const second = h.start(undefined, { ...options });
+  await tick();
+  assert.equal(h.requests.length, 1);
+  complete(response({ sessionId: 'created' }));
+  await Promise.all([first, second]);
+  assert.deepEqual(h.opened, ['created']);
+});
+
+test('blocked draft initialization reports a localized Chinese notice', async t => {
+  const h = harness(t, { draftResult: 'blocked', locale: 'zh-CN' });
+  await h.start(undefined, { prompt: 'Draft' });
+  assert.equal(h.notices[0].message, '暂时无法填入草稿，请稍后重试');
+  assert.deepEqual(h.opened, []);
 });
 
 test('No Workspace creates a standalone conversation when no main view is retained', async t => {

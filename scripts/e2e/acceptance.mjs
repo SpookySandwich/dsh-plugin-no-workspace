@@ -10,9 +10,9 @@ import { Driver } from './driver.mjs';
 const root = path.resolve(import.meta.dirname, '../..');
 const modules = path.resolve(process.env.DSH_QA_MODULES ?? path.join(root, 'node_modules'));
 const cli = path.join(modules, '@deepseek-ai/dsh/lib/bin.js');
-assert.ok(fs.existsSync(cli), 'Set DSH_QA_MODULES to an official DSH 0.2.0-rc.2 node_modules directory');
+assert.ok(fs.existsSync(cli), 'Set DSH_QA_MODULES to an official DSH node_modules directory');
 const version = JSON.parse(fs.readFileSync(path.join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')).version;
-assert.equal(version, '0.2.0-rc.2', 'This acceptance suite targets the official DSH 0.2.0-rc.2 API');
+assert.ok(['0.2.0-rc.2', '0.2.1-rc.2'].includes(version), `Unsupported acceptance runtime: ${version}`);
 const browserPath = process.env.DSH_QA_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 assert.ok(fs.existsSync(browserPath), 'Set DSH_QA_BROWSER to a Chromium or Edge executable');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-no-workspace-e2e-'));
@@ -22,8 +22,19 @@ fs.mkdirSync(output, { recursive: true });
 fs.mkdirSync(path.join(profile, 'node_modules'), { recursive: true });
 fs.symlinkSync(path.join(modules, '@deepseek-ai'), path.join(profile, 'node_modules/@deepseek-ai'), 'junction');
 fs.symlinkSync(root, path.join(profile, 'node_modules/dsh-plugin-no-workspace'), 'junction');
+const qaClient = path.join(profile, 'node_modules/no-workspace-qa-client');
+fs.mkdirSync(qaClient);
+fs.writeFileSync(path.join(qaClient, 'package.json'), JSON.stringify({ name: 'no-workspace-qa-client', version: '0.0.0', type: 'module',
+  main: 'index.js', exports: { '.': './index.js', './client': './client.js' }, dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web', inject: [
+    '@deepseek-ai/dsh-client-ui-workspace', '@deepseek-ai/dsh-api-session-controller',
+    '@deepseek-ai/dsh-api-workspace-controller', '@deepseek-ai/dsh-client-ui-conversation',
+    '@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-agent-preset',
+  ] } } }));
+fs.writeFileSync(path.join(qaClient, 'index.js'), 'export function apply() {}');
+fs.writeFileSync(path.join(qaClient, 'cordis.patch.yml'), '- insert:\n    - id: qa-client\n      name: no-workspace-qa-client\n');
+fs.copyFileSync(path.join(root, 'test/fixtures/browser-acceptance.client.js'), path.join(qaClient, 'client.js'));
 fs.writeFileSync(path.join(profile, 'package.json'), JSON.stringify({ name: 'no-workspace-qa', private: true,
-  dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-plugin-no-workspace'] } } }));
+  dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-plugin-no-workspace', 'no-workspace-qa-client'] } } }));
 // Keep the fixture outside the plugin package so the client-module registry
 // does not mistake its host-only entry for a second copy of the client bundle.
 fs.copyFileSync(path.join(root, 'test/fixtures/browser-acceptance.mjs'), path.join(profile, 'fixture.mjs'));
@@ -72,9 +83,15 @@ try {
   await driver.waitFor(`document.body.innerText.includes('Preview Notice')`, { timeoutMs: 60000, label: 'client boot' });
   await driver.clickText('button', 'Continue');
   await driver.waitFor(`!document.body.innerText.includes('Preview Notice')`, { label: 'welcome acknowledgement' });
-  // This fresh profile has no provider credentials. DSH loads the provider
-  // settings after the welcome step, rendering nothing while that load runs.
-  await driver.clickText('button', 'Configure later', { timeoutMs: 60000 });
+  // 0.2.0 opens provider onboarding after the welcome step; 0.2.1 uses
+  // a dismissible account dialog. Neither run needs provider credentials.
+  const onboarding = await driver.waitFor(`
+    [...document.querySelectorAll('button')].some(b => b.innerText.includes('Configure later')) ? 'dialog'
+      : [...document.querySelectorAll('[role="dialog"]')].some(d => d.innerText.includes('Get started')
+        && d.querySelector('button[aria-label="Close"]')) ? 'account' : false
+  `, { timeoutMs: 60000, label: 'provider or account onboarding' });
+  if (onboarding === 'dialog') await driver.clickText('button', 'Configure later');
+  else await driver.click('[role="dialog"] button[aria-label="Close"]');
   await driver.waitFor(`!document.querySelector('[role="dialog"][aria-modal="true"]') && document.getElementById('root')?.inert === false`, {
     label: 'provider onboarding released keyboard ownership',
   });
@@ -91,23 +108,83 @@ try {
     type, key: 'n', code: 'KeyN', windowsVirtualKeyCode: 78, modifiers: 3,
   });
   await driver.waitFor(noWorkspace, { label: 'native Web shortcut' });
-  assert.equal(requests.filter(r => r.path === '/no-workspace/create').length, 1, 'The standalone blank is reused');
+  assert.equal(requests.filter(r => r.path === '/no-workspace/create').length, 2, 'Ordinary New Session creates a fresh default-preset blank');
   await driver.typeInto('[data-composer-input]', 'LOCAL NO WORKSPACE QA DRAFT');
   await driver.waitFor(`document.querySelector('[data-composer-input]').innerText.includes('LOCAL NO WORKSPACE QA DRAFT')`, { label: 'editable standalone composer' });
   await driver.click('button[data-dsh-nw-chip]');
   await driver.clickText('button[role="menuitem"]', 'No Workspace acceptance');
   await driver.waitFor(inWorkspace, { label: 'workspace picker selection' });
   await driver.waitFor(`document.querySelector('[data-composer-input]').innerText.includes('LOCAL NO WORKSPACE QA DRAFT')`, { label: 'native draft transfer' });
+  const beforeDetach = await driver.eval(`fetch('/qa/no-workspace').then(r=>r.json())`);
   await driver.clickText('button[aria-haspopup="menu"]', 'No Workspace acceptance');
   await driver.clickText('button[role="menuitem"]', 'No Workspace');
   await driver.waitFor(noWorkspace, { label: 'workspace detachment' });
-  await waitFor(() => requests.some(r => r.path === '/no-workspace/detach' && r.body.sessionId), 'detach request');
+  const detachedId = await waitFor(() => requests.find(r => r.path === '/no-workspace/detach' && r.body.sessionId)?.body.sessionId, 'detach request');
+  assert.ok(beforeDetach.sessionIds.includes(detachedId), 'The detached conversation belonged to the selected workspace');
+  await driver.waitFor(`fetch('/qa/no-workspace').then(r=>r.json()).then(value => !value.sessionIds.includes(${JSON.stringify(detachedId)}))`, {
+    label: 'host workspace detachment committed',
+  });
   const membership = await driver.eval(`fetch('/qa/no-workspace').then(r=>r.json())`);
-  assert.equal(membership.sessionIds.length, 0, 'The selected conversation leaves its workspace');
+  assert.deepEqual(membership.sessionIds, beforeDetach.sessionIds.filter(id => id !== detachedId),
+    'Only the selected conversation leaves its workspace');
   assert.equal(await driver.eval(`document.querySelector('[data-composer-input]').innerText.includes('LOCAL NO WORKSPACE QA DRAFT')`), true);
+  const optionChecks = [];
+  if (version === '0.2.1-rc.2') {
+    await driver.waitFor('window.__noWorkspaceQa', { label: 'QA client registration' });
+    // Invoke the actual Settings/Add-plugin creator callback, including seat.stage().
+    const originalBlank = await driver.eval('window.__noWorkspaceQa.current()');
+    await driver.waitFor(`window.__noWorkspaceQa.blanks().find(b => b.id === ${JSON.stringify(originalBlank)})?.preset === 'standard'`, { label: 'original blank preset projection' });
+    const blanksBeforeCreator = await driver.eval('window.__noWorkspaceQa.blanks()');
+    const createCount = requests.filter(r => r.path === '/no-workspace/create').length;
+    await driver.eval('window.__noWorkspaceQa.creator()');
+    await waitFor(() => requests.filter(r => r.path === '/no-workspace/create').length > createCount, 'real creator request');
+    await driver.waitFor(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(originalBlank)}).then(r=>r.json()).then(s=>s.agentPreset === 'cordis')`, { label: 'creator reuses and changes selected blank' });
+    assert.equal(await driver.eval('window.__noWorkspaceQa.current()'), originalBlank);
+    assert.equal(requests.filter(r => r.path === '/no-workspace/create').at(-1).body.sessionId, originalBlank);
+    const afterCreator = await driver.eval('window.__noWorkspaceQa.blanks()');
+    assert.deepEqual(afterCreator.map(b => b.id).sort(), blanksBeforeCreator.map(b => b.id).sort(), 'Creator creates no duplicate blank');
+    for (const other of blanksBeforeCreator.filter(b => b.id !== originalBlank)) {
+      assert.equal((await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(other.id)}).then(r=>r.json())`)).agentPreset, other.preset,
+        'Creator must not change another blank preset');
+    }
+    await driver.eval(`[...document.querySelectorAll('button[aria-label="New session"]')].find(b=>b.getBoundingClientRect().width>0).click()`);
+    await driver.waitFor(`window.__noWorkspaceQa.current() !== ${JSON.stringify(originalBlank)}`, { label: 'plain New Session after creator' });
+    const plainId = await driver.eval('window.__noWorkspaceQa.current()');
+    assert.equal((await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(plainId)}).then(r=>r.json())`)).agentPreset, 'standard');
+    optionChecks.push('real preset creator reuses selected blank without changing other blanks', 'plain New Session restores default preset');
+    for (const withWorkspace of [true, false]) {
+      if (!withWorkspace) {
+        await driver.eval(`fetch('/qa/no-workspace', {method: 'DELETE'}).then(r=>r.json())`);
+        await driver.waitFor('window.__noWorkspaceQa.workspaceCount() === 0', { label: 'no registered workspaces' });
+      } else {
+        await driver.eval(`document.querySelector('button[aria-label="New session in No Workspace acceptance"]').click()`);
+        await driver.waitFor(inWorkspace, { label: 'active workspace before preset helper' });
+      }
+      const id = await driver.eval(`window.__noWorkspaceQa.start({agentPreset: 'cordis', clearPreviousDraft: false})`);
+      assert.ok(id);
+      await driver.waitFor(noWorkspace, { label: 'preset helper stays standalone' });
+      const state = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(id)}).then(r=>r.json())`);
+      assert.deepEqual(state.memberships, []);
+      assert.equal(state.agentPreset, 'cordis', 'Host applies the requested preset');
+      const prompt = `STANDALONE OPTIONS ${withWorkspace}`;
+      const draftId = await driver.eval(`window.__noWorkspaceQa.start({prompt: ${JSON.stringify(prompt)}, clearPreviousDraft: true})`);
+      await driver.waitFor(`document.querySelector('[data-composer-input]')?.innerText.includes(${JSON.stringify(prompt)})`, { label: 'standalone prompt initialized' });
+      assert.deepEqual(await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(draftId)}).then(r=>r.json()).then(s=>s.memberships)`), []);
+      await driver.eval(`window.__noWorkspaceQa.start({prompt: 'MUST NOT REPLACE', clearPreviousDraft: false})`);
+      assert.equal(await driver.eval(`document.querySelector('[data-composer-input]').innerText.includes(${JSON.stringify(prompt)})`), true);
+      await driver.eval(`window.__noWorkspaceQa.start({clearPreviousDraft: true})`);
+      await driver.waitFor(`document.querySelector('[data-composer-input]')?.innerText.trim() === ''`, { label: 'explicit draft clear' });
+      const combined = await driver.eval(`window.__noWorkspaceQa.start({agentPreset: 'cordis', prompt: 'COMBINED PRESET AND DRAFT', clearPreviousDraft: true})`);
+      await driver.waitFor(`document.querySelector('[data-composer-input]')?.innerText.includes('COMBINED PRESET AND DRAFT')`, { label: 'fresh preset draft initialized before navigation' });
+      const combinedState = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(combined)}).then(r=>r.json())`);
+      assert.deepEqual(combinedState.memberships, []);
+      assert.equal(combinedState.agentPreset, 'cordis');
+      optionChecks.push(`preset and draft standalone with workspace=${withWorkspace}`);
+    }
+  }
   assert.deepEqual(driver.appErrors(), []);
   const screenshot = await driver.shot('acceptance');
-  const report = { ok: true, dsh: '0.2.0-rc.2', requests, screenshot, checks: ['client boot', 'standalone creation', 'explicit workspace creation', 'Web shortcut', 'blank reuse', 'draft transfer', 'detachment', 'no browser errors'] };
+  const report = { ok: true, dsh: version, requests, screenshot, checks: ['client boot', 'standalone creation', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'draft transfer', 'detachment', ...optionChecks, 'no browser errors'] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) {
