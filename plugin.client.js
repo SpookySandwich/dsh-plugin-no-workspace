@@ -40,6 +40,24 @@ button[data-dsh-nw-picker-item] > span:first-child::before {
    Ungrouped project-row wrapper around standalone conversations. */
 [data-dsh-nw-ungrouped] > [role='treeitem'][aria-expanded] { display: none; }
 
+/* A standalone section needs its own boundary after the last real Workspace.
+   Attribute-backed copy follows the same locale fallback as the picker without
+   inserting children into DSH's React-owned tree. */
+[data-dsh-nw-ungrouped] {
+  margin-top: 6px;
+  border-top: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+}
+[data-dsh-nw-ungrouped]::before {
+  content: attr(data-dsh-nw-heading);
+  display: block;
+  padding: 8px 8px 4px;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: .2px;
+  color: var(--dsw-alias-label-tertiary, #8a8a8a);
+}
+
 /* With the project row gone, the leading status slot is pure indentation, and
    it lines standalone rows up under the Workspace above them as if they were
    its children. Drop the slot when it is empty, exactly as DSH's own flat list
@@ -381,20 +399,22 @@ function markNoWorkspaceUi() {
 
     // Ungrouped is an implementation bucket, not a user-facing Workspace.
     // Keep it expanded so its native SessionNodeItems remain mounted, then hide
-    // only the project header through CSS. Real Workspace groups are untouched.
+    // only the project header through CSS. Use its stable empty workspace key,
+    // since real Workspaces may also be named "Ungrouped" in any locale.
     document.querySelectorAll('[role="treeitem"][aria-expanded]').forEach(function (row) {
-      const text = (row.innerText || row.textContent || '').trim();
-      const ungrouped = text === '\u672a\u5206\u7ec4' || text === 'Ungrouped';
+      const ungrouped = row.getAttribute('data-row-key') === 'workspace:';
       const section = row.parentElement;
       if (!section) return;
       if (ungrouped) {
         section.setAttribute('data-dsh-nw-ungrouped', '');
+        section.setAttribute('data-dsh-nw-heading', getLocale() === 'zh' ? '\u65e0\u5de5\u4f5c\u533a' : 'No Workspace');
         if (row.getAttribute('aria-expanded') === 'false' && !row.hasAttribute('data-dsh-nw-expanding')) {
           row.setAttribute('data-dsh-nw-expanding', '');
           row.click();
         }
       } else if (section.hasAttribute('data-dsh-nw-ungrouped')) {
         section.removeAttribute('data-dsh-nw-ungrouped');
+        section.removeAttribute('data-dsh-nw-heading');
       }
     });
   }
@@ -409,10 +429,17 @@ function markNoWorkspaceUi() {
     subtree: true,
     characterData: true,
     attributes: true,
-    attributeFilter: ['aria-expanded'],
+    attributeFilter: ['aria-expanded', 'data-row-key', 'lang'],
   });
   update();
-  return function () { active = false; observer.disconnect(); };
+  return function () {
+    active = false;
+    observer.disconnect();
+    document.querySelectorAll('[data-dsh-nw-ungrouped]').forEach(function (section) {
+      section.removeAttribute('data-dsh-nw-ungrouped');
+      section.removeAttribute('data-dsh-nw-heading');
+    });
+  };
 }
 
 return {

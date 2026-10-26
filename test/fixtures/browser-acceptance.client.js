@@ -1,11 +1,12 @@
 window.__ModuleLoader__.load({
   id: 'no-workspace-qa-client',
   factory: () => ({
-    inject: ['uiWorkspace', 'sessions', 'workspaces', 'conversation', 'slots'],
+    inject: ['uiWorkspace', 'sessions', 'workspaces', 'conversation', 'slots', 'locale'],
     apply(ctx) {
       const current = () => Object.values(ctx.sessions.list.getSnapshot().byId)
         .find(row => (row.retainedBy.mainView || 0) > 0)?.id;
       window.__noWorkspaceQa = {
+        setLocale: id => ctx.locale.setLocale(id),
         async start(options, workspaceId) {
           await ctx.uiWorkspace.startSession(workspaceId, options);
           return current();

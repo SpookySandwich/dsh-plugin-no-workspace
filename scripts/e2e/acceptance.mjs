@@ -17,7 +17,7 @@ const browserPath = process.env.DSH_QA_BROWSER ?? 'C:/Program Files (x86)/Micros
 assert.ok(fs.existsSync(browserPath), 'Set DSH_QA_BROWSER to a Chromium or Edge executable');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-no-workspace-e2e-'));
 const profile = path.join(home, 'profiles/web');
-const output = path.join(root, 'scratch/e2e-current');
+const output = path.resolve(process.env.DSH_QA_OUTPUT ?? path.join(root, 'scratch/e2e-current'));
 fs.mkdirSync(output, { recursive: true });
 fs.mkdirSync(path.join(profile, 'node_modules'), { recursive: true });
 fs.symlinkSync(path.join(modules, '@deepseek-ai'), path.join(profile, 'node_modules/@deepseek-ai'), 'junction');
@@ -29,6 +29,7 @@ fs.writeFileSync(path.join(qaClient, 'package.json'), JSON.stringify({ name: 'no
     '@deepseek-ai/dsh-client-ui-workspace', '@deepseek-ai/dsh-api-session-controller',
     '@deepseek-ai/dsh-api-workspace-controller', '@deepseek-ai/dsh-client-ui-conversation',
     '@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-agent-preset',
+    '@deepseek-ai/dsh-client-locale',
   ] } } }));
 fs.writeFileSync(path.join(qaClient, 'index.js'), 'export function apply() {}');
 fs.writeFileSync(path.join(qaClient, 'cordis.patch.yml'), '- insert:\n    - id: qa-client\n      name: no-workspace-qa-client\n');
@@ -100,6 +101,49 @@ try {
   await driver.eval(`[...document.querySelectorAll('button[aria-label="New session"]')].find(b=>b.getBoundingClientRect().width>0).click()`);
   await driver.waitFor(noWorkspace, { label: 'standalone navigation' });
   assert.equal(requests.filter(r => r.path === '/no-workspace/create').length, 1);
+  // The empty real workspace immediately precedes the standalone bucket: hiding
+  // Ungrouped must leave a visible boundary, including after a live locale change.
+  await driver.waitFor(`!!document.querySelector('[data-dsh-nw-ungrouped] [aria-selected]')`, { label: 'standalone sidebar row' });
+  await driver.waitFor('!!window.__noWorkspaceQa', { label: 'QA client registration' });
+  const sidebarChecks = [];
+  for (const [locale, title] of [['en', 'No Workspace'], ['zh', '无工作区'], ['en', 'No Workspace']]) {
+    await driver.eval(`window.__noWorkspaceQa.setLocale(${JSON.stringify(locale)})`);
+    await driver.waitFor(`document.documentElement.lang === ${JSON.stringify(locale === 'zh' ? 'zh-CN' : locale)}`, { label: 'native locale switch' });
+    const sidebar = await driver.eval(`(() => {
+      const section = document.querySelector('[data-dsh-nw-ungrouped]');
+      const header = getComputedStyle(section, '::before');
+      const row = section.querySelector('[aria-selected]');
+      const nativeHeader = section.querySelector('[data-row-key="workspace:"]');
+      const workspace = document.querySelector('[data-row-key^="workspace:"]:not([data-row-key="workspace:"])');
+      return { locale: document.documentElement.lang, content: header.content,
+        label: section.getAttribute('data-dsh-nw-heading'), display: header.display,
+        border: getComputedStyle(section).borderTopWidth,
+        gap: row.getBoundingClientRect().top - section.getBoundingClientRect().top,
+        nativeHeader: getComputedStyle(nativeHeader).display,
+        workspaceVisible: workspace.getBoundingClientRect().height > 0,
+        workspaceMarked: workspace.parentElement.hasAttribute('data-dsh-nw-ungrouped'),
+        rowVisible: row.getBoundingClientRect().height > 0 };
+    })()`);
+    sidebarChecks.push(sidebar);
+    fs.writeFileSync(path.join(output, 'sidebar.json'), JSON.stringify(sidebarChecks, null, 2));
+    await driver.shot(`sidebar-${locale}`);
+    assert.ok(sidebar.content.includes(title) || (sidebar.content.includes('attr(') && sidebar.label === title),
+      `Standalone section needs a localized visible heading: ${JSON.stringify(sidebar)}`);
+    assert.equal(sidebar.display, 'block');
+    assert.equal(sidebar.border, '1px');
+    assert.ok(sidebar.gap >= 28, 'Heading reserves space above standalone rows');
+    assert.equal(sidebar.nativeHeader, 'none');
+    assert.equal(sidebar.workspaceVisible, true);
+    assert.equal(sidebar.workspaceMarked, false);
+    assert.equal(sidebar.rowVisible, true);
+  }
+  const workspaceRow = '[data-row-key^="workspace:"]:not([data-row-key="workspace:"])';
+  const expanded = await driver.eval(`document.querySelector(${JSON.stringify(workspaceRow)}).getAttribute('aria-expanded')`);
+  await driver.click(workspaceRow);
+  await driver.waitFor(`document.querySelector(${JSON.stringify(workspaceRow)}).getAttribute('aria-expanded') !== ${JSON.stringify(expanded)}`, { label: 'native workspace toggle' });
+  assert.ok(await driver.eval(`document.querySelector('[data-dsh-nw-ungrouped] [aria-selected]').getBoundingClientRect().height > 0`),
+    'Standalone row remains visible when the adjacent workspace toggles');
+  await driver.click(workspaceRow);
   await driver.eval(`document.querySelector('button[aria-label="New session in No Workspace acceptance"]').click()`);
   await driver.waitFor(inWorkspace, { label: 'explicit workspace navigation' });
   assert.equal(requests.filter(r => r.path === '/no-workspace/create').length, 1, 'Explicit workspace calls remain native');
@@ -184,7 +228,7 @@ try {
   }
   assert.deepEqual(driver.appErrors(), []);
   const screenshot = await driver.shot('acceptance');
-  const report = { ok: true, dsh: version, requests, screenshot, checks: ['client boot', 'standalone creation', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'draft transfer', 'detachment', ...optionChecks, 'no browser errors'] };
+  const report = { ok: true, dsh: version, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized sidebar heading and separator', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'draft transfer', 'detachment', ...optionChecks, 'no browser errors'] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) {

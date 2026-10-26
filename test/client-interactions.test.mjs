@@ -81,7 +81,7 @@ function harness(t, { request, draftResult = 'applied', locale = 'en' } = {}) {
   t.after(() => { disposers.reverse().forEach(dispose => dispose()); dom.window.close(); });
   return {
     requests, opened, listeners, errors, nativeStarts, nativeOptions, nativeReceivers, uiWorkspace, originalStart, routes,
-    sidebar, nativeSidebar, composer, drafts, notices, retained,
+    sidebar, nativeSidebar, composer, drafts, notices, retained, document: dom.window.document,
     dispose: () => disposers[0](),
     reapply() { const dispose = plugin.apply(ctx); disposers.push(dispose); return dispose; },
     start(workspaceId, options) { return uiWorkspace.startSession(workspaceId, options); },
@@ -372,4 +372,46 @@ test('standalone composer remains usable and native enabled composers keep their
   assert.equal(adapted.disabled, false);
   assert.equal(adapted.workspacePickerOpen, false);
   assert.equal(adapted.onRequestWorkspace, undefined);
+});
+
+for (const [locale, expected] of [['en', 'No Workspace'], ['zh-CN', '无工作区'], ['ZH-tw', '无工作区'], ['fr', 'No Workspace'], ['', 'No Workspace']]) {
+  test(`standalone section heading follows locale ${JSON.stringify(locale)} and updates in place`, async t => {
+    const h = harness(t, { locale });
+    const doc = h.document;
+    doc.body.innerHTML = `<div id="real"><div role="treeitem" aria-expanded="true" data-row-key="workspace:real">Ungrouped</div></div>
+      <div id="standalone"><div role="treeitem" aria-expanded="true" data-row-key="workspace:">Ungrouped</div>
+      <div role="treeitem" aria-selected="true"><span></span><span>Standalone session</span></div></div>`;
+    const section = doc.getElementById('standalone');
+    const children = [...section.childNodes];
+    await tick();
+    assert.equal(section.getAttribute('data-dsh-nw-heading'), expected);
+    assert.equal(doc.getElementById('real').hasAttribute('data-dsh-nw-ungrouped'), false);
+    assert.equal(doc.getElementById('real').hasAttribute('data-dsh-nw-heading'), false);
+    const header = section.firstElementChild;
+    assert.equal(doc.defaultView.getComputedStyle(header).display, 'none');
+    doc.documentElement.lang = expected === 'No Workspace' ? 'zh-CN' : 'en-US';
+    await tick();
+    assert.equal(section.getAttribute('data-dsh-nw-heading'), expected === 'No Workspace' ? '无工作区' : 'No Workspace');
+    assert.deepEqual([...section.childNodes], children, 'Native React children stay mounted');
+    h.dispose();
+    assert.equal(section.hasAttribute('data-dsh-nw-heading'), false);
+    assert.notEqual(doc.defaultView.getComputedStyle(header).display, 'none');
+  });
+}
+
+test('a collapsed standalone section expands once and releases its heading when reused as a workspace', async t => {
+  const h = harness(t);
+  const doc = h.document;
+  doc.body.innerHTML = '<div><div role="treeitem" aria-expanded="false" data-row-key="workspace:">未分组</div></div>';
+  const row = doc.querySelector('[role="treeitem"]');
+  let clicks = 0;
+  row.addEventListener('click', () => { clicks++; row.setAttribute('aria-expanded', 'true'); });
+  await tick();
+  assert.equal(clicks, 1);
+  assert.equal(row.parentElement.getAttribute('data-dsh-nw-heading'), 'No Workspace');
+  row.setAttribute('data-row-key', 'workspace:real');
+  row.textContent = 'Actual workspace';
+  await tick();
+  assert.equal(row.parentElement.hasAttribute('data-dsh-nw-ungrouped'), false);
+  assert.equal(row.parentElement.hasAttribute('data-dsh-nw-heading'), false);
 });
