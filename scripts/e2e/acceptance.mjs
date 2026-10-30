@@ -12,7 +12,7 @@ const modules = path.resolve(process.env.DSH_QA_MODULES ?? path.join(root, 'node
 const cli = path.join(modules, '@deepseek-ai/dsh/lib/bin.js');
 assert.ok(fs.existsSync(cli), 'Set DSH_QA_MODULES to an official DSH node_modules directory');
 const version = JSON.parse(fs.readFileSync(path.join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')).version;
-assert.ok(['0.2.0-rc.2', '0.2.1-rc.2'].includes(version), `Unsupported acceptance runtime: ${version}`);
+assert.ok(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5'].includes(version), `Unsupported acceptance runtime: ${version}`);
 const browserPath = process.env.DSH_QA_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 assert.ok(fs.existsSync(browserPath), 'Set DSH_QA_BROWSER to a Chromium or Edge executable');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-no-workspace-e2e-'));
@@ -40,13 +40,18 @@ fs.writeFileSync(path.join(profile, 'package.json'), JSON.stringify({ name: 'no-
 // does not mistake its host-only entry for a second copy of the client bundle.
 fs.copyFileSync(path.join(root, 'test/fixtures/browser-acceptance.mjs'), path.join(profile, 'fixture.mjs'));
 fs.writeFileSync(path.join(profile, 'cordis.patch.yml'), '- insert:\n    - id: no-workspace-qa\n      name: ./fixture.mjs\n');
-const host = spawn(process.execPath, ['--expose-internals', cli, '--profile', 'web', '--no-open', '--port', '0'], {
-  env: { ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' },
-  stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
-});
-let hostLog = '', browserLog = '', browser, driver;
-host.stdout.on('data', data => hostLog += data);
-host.stderr.on('data', data => hostLog += data);
+let hostLog = '', previousHostLog = '', browserLog = '', browser, driver, host;
+const processes = [];
+function startHost() {
+  host = spawn(process.execPath, ['--expose-internals', cli, '--profile', 'web', '--no-open', '--port', '0'], {
+    env: { ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+  });
+  processes.push({ kind: 'host', pid: host.pid });
+  host.stdout.on('data', data => hostLog += data);
+  host.stderr.on('data', data => hostLog += data);
+}
+startHost();
 async function waitFor(get, label, timeout = 30000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
@@ -70,14 +75,18 @@ try {
     '--remote-debugging-port=0', `--user-data-dir=${path.join(home, 'browser')}`, '--window-size=1440,1000', 'about:blank'],
   { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
   browser.stderr.on('data', data => browserLog += data);
+  processes.push({ kind: 'browser', pid: browser.pid });
   const port = Number(await waitFor(() => browserLog.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)/)?.[1], 'browser startup'));
   driver = await Driver.attach({ debugPort: port, appOrigin: new URL(url).origin, shotDir: output });
   const requests = [];
+  const pendingRequests = new Set();
   driver.onMessage(message => {
     const request = message.params?.request;
     if (message.method === 'Network.requestWillBeSent' && request.url.includes('/no-workspace/')) {
       requests.push({ path: new URL(request.url).pathname, body: request.postData ? JSON.parse(request.postData) : null });
+      pendingRequests.add(message.params.requestId);
     }
+    if (message.method === 'Network.loadingFinished' || message.method === 'Network.loadingFailed') pendingRequests.delete(message.params.requestId);
   });
   await driver.send('Network.enable');
   await driver.send('Page.navigate', { url });
@@ -96,8 +105,9 @@ try {
   await driver.waitFor(`!document.querySelector('[role="dialog"][aria-modal="true"]') && document.getElementById('root')?.inert === false`, {
     label: 'provider onboarding released keyboard ownership',
   });
-  const noWorkspace = `[...document.querySelectorAll('button[data-dsh-nw-chip]')].some(b=>b.innerText.trim()==='No Workspace')`;
-  const inWorkspace = `[...document.querySelectorAll('button[aria-haspopup="menu"]')].some(b=>b.innerText.trim()==='No Workspace acceptance')`;
+  const openComplete = `window.__noWorkspaceQa?.opened(window.__noWorkspaceQa.current())`;
+  const noWorkspace = `${openComplete} && [...document.querySelectorAll('button[data-dsh-nw-chip]')].some(b=>b.innerText.trim()==='No Workspace')`;
+  const inWorkspace = `${openComplete} && [...document.querySelectorAll('button[aria-haspopup="menu"]')].some(b=>b.innerText.trim()==='No Workspace acceptance')`;
   await driver.eval(`[...document.querySelectorAll('button[aria-label="New session"]')].find(b=>b.getBoundingClientRect().width>0).click()`);
   await driver.waitFor(noWorkspace, { label: 'standalone navigation' });
   assert.equal(requests.filter(r => r.path === '/no-workspace/create').length, 1);
@@ -172,8 +182,47 @@ try {
   assert.deepEqual(membership.sessionIds, beforeDetach.sessionIds.filter(id => id !== detachedId),
     'Only the selected conversation leaves its workspace');
   assert.equal(await driver.eval(`document.querySelector('[data-composer-input]').innerText.includes('LOCAL NO WORKSPACE QA DRAFT')`), true);
+  // Restart the actual host against the same isolated profile. A durable blank
+  // and detached membership must survive independently of the browser's stores.
+  const durableBefore = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(detachedId)}).then(r=>r.json())`);
+  assert.ok(durableBefore.stored, 'Detached blank is materialized before restart');
+  assert.deepEqual(durableBefore.memberships, []);
+  const standaloneId = await driver.eval(`fetch('/no-workspace/create', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'}).then(r=>r.json()).then(s=>s.sessionId)`);
+  assert.ok(standaloneId);
+  const standaloneBefore = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(standaloneId)}).then(r=>r.json())`);
+  assert.ok(standaloneBefore.stored, 'Fresh standalone is immediately durable');
+  await driver.send('Page.navigate', { url: 'about:blank' });
+  await stop(host);
+  previousHostLog = hostLog;
+  hostLog = '';
+  startHost();
+  const restartedUrl = await waitFor(() => hostLog.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/[^\s]*)/)?.[1], 'host restart', 180000);
+  await driver.send('Page.navigate', { url: restartedUrl });
+  await driver.waitFor('!!window.__noWorkspaceQa', { timeoutMs: 60000, label: 'restarted client boot' });
+  for (const [id, before] of [[detachedId, durableBefore], [standaloneId, standaloneBefore]]) {
+    const after = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(id)}).then(r=>r.json())`);
+    assert.ok(after.stored, 'Session remains on disk after host restart');
+    // Loading normalizes optional header defaults (for example delegationDepth).
+    for (const key of ['id', 'createdAt', 'cwd', 'agentPreset', 'isSeeded']) {
+      assert.equal(after.stored.header[key], before.stored.header[key], `Persisted ${key}`);
+    }
+    assert.deepEqual(after.memberships, []);
+    await driver.waitFor(`window.__noWorkspaceQa.listed(${JSON.stringify(id)})`, { timeoutMs: 60000, label: 'restarted session feed' });
+    await driver.eval(`window.__noWorkspaceQa.open(${JSON.stringify(id)})`);
+    await driver.waitFor(`window.__noWorkspaceQa.current() === ${JSON.stringify(id)} && !!document.querySelector('[data-composer-input]')`, { label: 'reopen durable standalone' });
+    await driver.waitFor(noWorkspace, { label: 'reopened standalone composer' });
+    await driver.waitFor(`window.__noWorkspaceQa.opened(${JSON.stringify(id)})`, { label: 'cold session open completed' });
+  }
+  await driver.eval(`window.__noWorkspaceQa.open(${JSON.stringify(detachedId)})`);
+  await driver.waitFor(`window.__noWorkspaceQa.current() === ${JSON.stringify(detachedId)}`, { label: 'restore detached blank for Creator' });
+  await driver.waitFor(`window.__noWorkspaceQa.opened(${JSON.stringify(detachedId)})`, { label: 'restored blank open completed' });
+  // Older 0.2.1 reopens its account prompt on a new host origin.
+  const accountClose = '[role="dialog"] button[aria-label="Close"]';
+  if (await driver.eval(`!!document.querySelector(${JSON.stringify(accountClose)})`)) {
+    await driver.click(accountClose);
+  }
   const optionChecks = [];
-  if (version === '0.2.1-rc.2') {
+  if (version !== '0.2.0-rc.2') {
     await driver.waitFor('window.__noWorkspaceQa', { label: 'QA client registration' });
     // Invoke the actual Settings/Add-plugin creator callback, including seat.stage().
     const originalBlank = await driver.eval('window.__noWorkspaceQa.current()');
@@ -182,20 +231,34 @@ try {
     const createCount = requests.filter(r => r.path === '/no-workspace/create').length;
     await driver.eval('window.__noWorkspaceQa.creator()');
     await waitFor(() => requests.filter(r => r.path === '/no-workspace/create').length > createCount, 'real creator request');
-    await driver.waitFor(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(originalBlank)}).then(r=>r.json()).then(s=>s.agentPreset === 'cordis')`, { label: 'creator reuses and changes selected blank' });
-    assert.equal(await driver.eval('window.__noWorkspaceQa.current()'), originalBlank);
-    assert.equal(requests.filter(r => r.path === '/no-workspace/create').at(-1).body.sessionId, originalBlank);
+    await driver.waitFor(`window.__noWorkspaceQa.current() !== ${JSON.stringify(originalBlank)}`, { label: 'creator preserves different-preset blank' });
+    const creatorId = await driver.eval('window.__noWorkspaceQa.current()');
+    await driver.waitFor(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(creatorId)}).then(r=>r.json()).then(s=>s.agentPreset === 'cordis')`, { label: 'creator applies requested preset to new blank' });
+    assert.equal(requests.filter(r => r.path === '/no-workspace/create').at(-1).body.sessionId, undefined);
     const afterCreator = await driver.eval('window.__noWorkspaceQa.blanks()');
-    assert.deepEqual(afterCreator.map(b => b.id).sort(), blanksBeforeCreator.map(b => b.id).sort(), 'Creator creates no duplicate blank');
-    for (const other of blanksBeforeCreator.filter(b => b.id !== originalBlank)) {
-      assert.equal((await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(other.id)}).then(r=>r.json())`)).agentPreset, other.preset,
+    assert.deepEqual(afterCreator.map(b => b.id).sort(), [...blanksBeforeCreator.map(b => b.id), creatorId].sort());
+    for (const other of blanksBeforeCreator) {
+      // rc.2's native callback stages cordis on the original blank itself;
+      // rc.5 deliberately removed that mutation for a different listed preset.
+      const expected = version === '0.2.1-rc.2' && other.id === originalBlank ? 'cordis' : other.preset;
+      assert.equal((await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(other.id)}).then(r=>r.json())`)).agentPreset, expected,
         'Creator must not change another blank preset');
     }
+    await driver.eval('window.__noWorkspaceQa.creator()');
+    await waitFor(() => requests.filter(r => r.path === '/no-workspace/create').length === createCount + 2, 'same-preset creator request');
+    assert.equal(requests.filter(r => r.path === '/no-workspace/create').at(-1).body.sessionId, creatorId);
+    assert.equal(await driver.eval('window.__noWorkspaceQa.current()'), creatorId);
+    await waitFor(() => pendingRequests.size === 0, 'creator response completed');
+    await driver.waitFor(`window.__noWorkspaceQa.opened(${JSON.stringify(creatorId)})`, { label: 'creator session open completed' });
     await driver.eval(`[...document.querySelectorAll('button[aria-label="New session"]')].find(b=>b.getBoundingClientRect().width>0).click()`);
-    await driver.waitFor(`window.__noWorkspaceQa.current() !== ${JSON.stringify(originalBlank)}`, { label: 'plain New Session after creator' });
+    await driver.waitFor(`window.__noWorkspaceQa.current() !== ${JSON.stringify(creatorId)}`, { label: 'plain New Session after creator' });
     const plainId = await driver.eval('window.__noWorkspaceQa.current()');
+    await driver.waitFor(`window.__noWorkspaceQa.opened(${JSON.stringify(plainId)})`, { label: 'plain session open completed' });
     assert.equal((await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(plainId)}).then(r=>r.json())`)).agentPreset, 'standard');
-    optionChecks.push('real preset creator reuses selected blank without changing other blanks', 'plain New Session restores default preset');
+    optionChecks.push(version === '0.2.1-rc.5'
+      ? 'real preset creator preserves different-preset blanks and reuses matching blank'
+      : 'real preset creator and matching-blank reuse (rc.2 native staging still changes original blank)',
+    'plain New Session restores default preset');
     for (const withWorkspace of [true, false]) {
       if (!withWorkspace) {
         await driver.eval(`fetch('/qa/no-workspace', {method: 'DELETE'}).then(r=>r.json())`);
@@ -223,12 +286,24 @@ try {
       const combinedState = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(combined)}).then(r=>r.json())`);
       assert.deepEqual(combinedState.memberships, []);
       assert.equal(combinedState.agentPreset, 'cordis');
+      if (version === '0.2.1-rc.5') {
+        await driver.eval(`window.__noWorkspaceQa.start({prompt: 'APPENDED DRAFT', whenDraftExists: 'append'})`);
+        await driver.waitFor(`document.querySelector('[data-composer-input]')?.innerText.includes('APPENDED DRAFT')`, { label: 'native append draft policy' });
+        assert.ok(await driver.eval(`document.querySelector('[data-composer-input]').innerText.includes('COMBINED PRESET AND DRAFT')`));
+        await driver.eval(`window.__noWorkspaceQa.start({prompt: 'MUST NOT REPLACE', clearPreviousDraft: true, whenDraftExists: 'keep'})`);
+        assert.ok(await driver.eval(`document.querySelector('[data-composer-input]').innerText.includes('APPENDED DRAFT')`));
+        await driver.eval(`window.__noWorkspaceQa.start({prompt: 'REPLACEMENT DRAFT', whenDraftExists: 'replace'})`);
+        await driver.waitFor(`document.querySelector('[data-composer-input]')?.innerText.trim() === 'REPLACEMENT DRAFT'`, { label: 'native replace draft policy' });
+        await driver.eval(`window.__noWorkspaceQa.start({whenDraftExists: 'replace'})`);
+        await driver.waitFor(`document.querySelector('[data-composer-input]')?.innerText.trim() === ''`, { label: 'native replace without prompt' });
+        optionChecks.push(`explicit keep/append/replace draft policies with workspace=${withWorkspace}`);
+      }
       optionChecks.push(`preset and draft standalone with workspace=${withWorkspace}`);
     }
   }
   assert.deepEqual(driver.appErrors(), []);
   const screenshot = await driver.shot('acceptance');
-  const report = { ok: true, dsh: version, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized sidebar heading and separator', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'draft transfer', 'detachment', ...optionChecks, 'no browser errors'] };
+  const report = { ok: true, dsh: version, processes, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized sidebar heading and separator', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'draft transfer', 'detachment', 'fresh and detached blank durability across host restart and reopen', ...optionChecks, 'no browser errors'] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) {
@@ -241,7 +316,8 @@ try {
   driver?.close();
   await stop(browser);
   await stop(host);
-  fs.writeFileSync(path.join(output, 'host.log'), hostLog.replace(/\?token=[^\s]+/g, '?token=[test token omitted]'));
+  fs.writeFileSync(path.join(output, 'host.log'), (previousHostLog + hostLog).replace(/\?token=[^\s]+/g, '?token=[test token omitted]'));
+  fs.writeFileSync(path.join(output, 'processes.json'), JSON.stringify(processes, null, 2));
   assert.equal(path.dirname(home), path.resolve(os.tmpdir()));
   assert.ok(path.basename(home).startsWith('dsh-no-workspace-e2e-'));
   fs.rmSync(home, { recursive: true, force: true });

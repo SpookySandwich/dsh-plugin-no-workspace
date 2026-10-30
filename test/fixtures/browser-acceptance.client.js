@@ -12,6 +12,9 @@ window.__ModuleLoader__.load({
           return current();
         },
         current,
+        listed: id => !!ctx.sessions.list.getSnapshot().byId[id],
+        opened: id => ctx.sessions.binding(id)?.session.getSnapshot().openState === 'open',
+        open: id => ctx.uiWorkspace.openSession(id),
         creator() {
           const entry = ctx.slots.entries('settings.section').find(entry => entry.options.id === 'agent-presets');
           const creator = entry?.inject?.().startCreatorDraft;

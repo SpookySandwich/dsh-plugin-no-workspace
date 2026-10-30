@@ -42,9 +42,13 @@ jobs:
         run: git diff --exit-code
 
   browser:
-    name: DSH 0.2 browser acceptance
+    name: DSH ${{ matrix.dsh }} browser acceptance
     runs-on: windows-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh: ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5']
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -52,4 +56,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm install --prefix "$env:RUNNER_TEMP/dsh-runtime" --no-audit --no-fund --save-exact "@deepseek-ai/dsh@${{ matrix.dsh }}"
       - run: npm run test:e2e
+        env:
+          DSH_QA_MODULES: ${{ runner.temp }}/dsh-runtime/node_modules

@@ -160,6 +160,40 @@ for (const clearPreviousDraft of [false, true]) {
   });
 }
 
+for (const whenDraftExists of ['keep', 'replace', 'append']) {
+  test(`explicit draft policy ${whenDraftExists} reaches the native input resolver`, async t => {
+    const h = harness(t);
+    await h.start(undefined, { prompt: 'Next paragraph', clearPreviousDraft: true, whenDraftExists });
+    assert.equal(h.drafts[0].whenDraftExists, whenDraftExists);
+  });
+}
+
+test('replace without a prompt clears the selected standalone draft', async t => {
+  const h = harness(t);
+  h.update(sessions(summary('selected', { blank: true, retainedBy: { mainView: 1 } })));
+  await h.start(undefined, { whenDraftExists: 'replace' });
+  assert.equal(h.drafts.length, 1);
+  assert.equal(h.drafts[0].whenDraftExists, 'replace');
+});
+
+test('different concurrent draft policies are not coalesced', async t => {
+  const h = harness(t);
+  await Promise.all(['keep', 'replace'].map(whenDraftExists => h.start(undefined, {
+    agentPreset: 'cordis', prompt: 'Draft', whenDraftExists,
+  })));
+  assert.equal(h.requests.length, 2);
+  assert.deepEqual(h.drafts.map(d => d.whenDraftExists), ['keep', 'replace']);
+});
+
+test('Creator preserves a selected blank that lists a different preset', async t => {
+  const h = harness(t);
+  h.update(sessions(summary('selected', { blank: true, retainedBy: { mainView: 1 },
+    projectionValues: { agentPreset: 'standard' } })));
+  await h.start(undefined, { agentPreset: 'cordis', clearPreviousDraft: false });
+  assert.deepEqual(h.requests, [{ url: '/no-workspace/create', body: { agentPreset: 'cordis' } }]);
+  assert.deepEqual(h.opened, ['created']);
+});
+
 test('blocked draft initialization shows a creation refusal and leaves the current view selected', async t => {
   const h = harness(t, { draftResult: 'blocked' });
   await h.start(undefined, { prompt: 'Requested draft' });

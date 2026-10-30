@@ -9,7 +9,7 @@
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
 [![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
-[![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.5-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 为 DeepSeek Harness 添加真正的一等「无工作区」会话，同时保留原生工作区体验。
@@ -43,7 +43,7 @@ dsh plugin --profile desktop add dsh-plugin-no-workspace
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # 或
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.3.1.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.4.0.tgz
 ```
 
 安装或升级后重启 DSH，使宿主端和客户端代码同时重新加载。
@@ -68,11 +68,13 @@ npm test
 npm run check:package
 ```
 
-自动测试覆盖宿主行为、DSH 0.2 导航契约及持久化。`npm run test:e2e` 会自行创建并清理临时 Web profile 和无头浏览器，验证真实会话创建、预设创建器（Agent Preset Creator）与草稿初始化选项、原生 Web 快捷键、显式工作区选择、草稿转移、解绑以及侧边栏独立会话区块的分隔线与中英标题。若官方 DSH `0.2.1-rc.2`（或 `0.2.0-rc.2`）不在当前项目依赖中，请通过 `DSH_QA_MODULES` 指定其 node_modules；也可通过 `DSH_QA_BROWSER` 指定 Chromium/Edge 路径。Windows CI 会运行此测试，结果保存在 `scratch/e2e-current/`，不会使用日常 DSH profile。
+自动测试覆盖宿主行为、DSH 0.2 导航契约及持久化。`npm run test:e2e` 会自行创建并清理临时 Web profile 和无头浏览器，验证真实会话创建、预设创建器（Agent Preset Creator）与草稿初始化选项、原生 Web 快捷键、显式工作区选择、草稿转移、解绑以及侧边栏独立会话区块的分隔线与中英标题。若官方 DSH `0.2.1-rc.5`（或 `0.2.1-rc.2` / `0.2.0-rc.2`）不在当前项目依赖中，请通过 `DSH_QA_MODULES` 指定其 node_modules；也可通过 `DSH_QA_BROWSER` 指定 Chromium/Edge 路径。Windows CI 会运行此测试，结果保存在 `scratch/e2e-current/`，不会使用日常 DSH profile。
 
 ## 兼容性
 
-版本 `1.3.1`（当前源码）：在隐藏原生「未分组 / Ungrouped」项目行后，为侧边栏独立会话区块补充顶部细分隔线与随界面语言切换的「无工作区」/ “No Workspace” 标题（修复 [#5](https://github.com/SpookySandwich/dsh-plugin-no-workspace/issues/5)，避免独立会话在视觉上紧贴并看似归属于上方最后一个工作区）。同时改用原生稳定行键 `data-row-key="workspace:"` 识别独立会话区块，避免将名称恰好为 `Ungrouped` 或「未分组」的真实工作区误判为未分组容器，并在插件卸载或节点复用时清理标记属性。
+版本 `1.4.0`（当前源码）：在声明的兼容范围中显式纳入官方 DSH `0.2.1-rc.5`（同时保留 `0.2.1-rc.2` 与 `0.2.0-rc.2` 支持），解决 npm 默认预发布语义下的 `ERESOLVE` 依赖解析限制。完整适配 `DraftInitializationOptions.whenDraftExists`（`keep` / `append` / `replace`）策略，支持无提示词替换及显式策略优先级，并纳入并发请求去重。Settings 中的 Agent Preset Creator 独立导航仅复用当前选中的同预设或预设未知的独立空白会话，严格保护其他模式草稿（如默认空白草稿）不被篡改预设；与原生在所有工作区空白会话中搜索复用不同，插件仅作用于当前选中的独立空白会话，避免跳至背景中的独立空白会话。普通无参数「新建会话」继续创建全新的默认预设独立空白会话（在 rc.5 上原生工作区导航改为复用工作区既有空白会话，但插件对独立会话刻意保持全新创建策略，防止意外继承历史状态或残留草稿）。
+
+版本 `1.3.1`：在隐藏原生「未分组 / Ungrouped」项目行后，为侧边栏独立会话区块补充顶部细分隔线与随界面语言切换的「无工作区」/ “No Workspace” 标题（修复 [#5](https://github.com/SpookySandwich/dsh-plugin-no-workspace/issues/5)，避免独立会话在视觉上紧贴并看似归属于上方最后一个工作区）。同时改用原生稳定行键 `data-row-key="workspace:"` 识别独立会话区块，避免将名称恰好为 `Ungrouped` 或「未分组」的真实工作区误判为未分组容器，并在插件卸载或节点复用时清理标记属性。
 
 版本 `1.3.0`：在声明的兼容范围中纳入官方 dsh `0.2.1-rc.2`（同时保留 `0.2.0-rc.2` 支持）。适配 `uiWorkspace.startSession` 新增的 `agentPreset`、`prompt` 和 `clearPreviousDraft` 选项，使未指定工作区的预设创建（如设置中的 Agent Preset Creator）和草稿初始化保持为独立会话而不继承工作区；预设创建仅复用当前选中的合格独立空白会话（通过宿主 `/create` 传入 `sessionId`、`agentPreset` 与 `cwd` 并遵循返回的会话 ID），合并相同的并发选项请求，并通过 `conversation.input.requestDraftInitialization` 处理草稿初始化及中文/英文拦截提示。普通无参数「新建会话」现在始终创建全新的默认预设独立空白会话（与 DSH `0.2.1-rc.2` 原生策略一致，避免误复用残留的 Creator 空白会话；在 `0.2.0-rc.2` 上连续点击普通「新建会话」也会新建独立空白会话而不再复用旧空白会话；此外，仅传草稿选项而未传 `agentPreset` 的程序化全局调用会直接复用当前合格独立空白会话并保留其既有预设）。
 
@@ -82,11 +84,11 @@ npm run check:package
 
 版本 `1.1.0`：通过原生 Session Controller 创建可持久恢复的独立会话；适配侧边栏组件属性与拆分后的工作区入口，避免修改已缓存的注入结果。
 
-声明兼容范围为 `>=0.2.0-rc.2 <0.3.0-0 || 0.2.1-rc.2`；官方 dsh `0.2.0-rc.2` 与 `0.2.1-rc.2` 满足该范围。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.1.5.md)。
+声明兼容范围为 `>=0.2.0-rc.2 <0.3.0-0 || 0.2.1-rc.2 || 0.2.1-rc.5`；官方 dsh `0.2.0-rc.2`、`0.2.1-rc.2` 与 `0.2.1-rc.5` 满足该范围。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.2.1-rc.5.md)。
 
-已发布版本可从 [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace) 安装。测试当前源码时，先运行 `npm ci` 和 `npm pack`，再运行 `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.3.1.tgz`。发布完整性检查见 [发布流程](.github/RELEASING.md)。
+已发布版本可从 [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace) 安装。测试当前源码时，先运行 `npm ci` 和 `npm pack`，再运行 `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.4.0.tgz`。发布完整性检查见 [发布流程](.github/RELEASING.md)。
 
-本次兼容目标为 DSH `0.2.1-rc.2`（同时兼容 `0.2.0-rc.2`）。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
+本次兼容目标为 DSH `0.2.1-rc.5`（同时兼容 `0.2.1-rc.2` 与 `0.2.0-rc.2`）。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
 
 
 `1.1.0` 曾在 DSH `0.1.5-rc.2` 的隔离 Web 环境验证空会话持久化和移出工作区。客户端加载有自动化测试。
