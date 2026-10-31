@@ -75,3 +75,29 @@ Investigation and local reproduction reproduced the failure: the old `inWorkspac
    - Independent Attacker Opus (`a979a261-ac9b-48f1-a684-cf38224cda0b`) confirmed VERDICT PASS round 1 on `cdc19a0`.
    - All 3 runtime acceptance suites (`0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`), 146 unit/robustness/persistence tests, 4 release-tool tests, 10 publish-tool tests, and package check passed cleanly.
    - All QA processes and ports stopped cleanly.
+
+### CI run 41233112099 failure and follow-up recovery
+
+Commit `2f16cda12ed4dd2f916852c8a72ab2d68694dc89` was pushed to `main` and executed in GitHub Actions run `41233112099` (attempt 2). While `0.2.0-rc.2` and the Node test matrix passed, two acceptance jobs failed:
+- **`0.2.1-rc.5` browser acceptance (`124633320367`)**: failed at `scripts/e2e/acceptance.mjs:147` on standalone localized heading assertion. Native `LocaleRuntime.setLocale` publishes optimistically while `ConfigFormController.set` persistence is queued asynchronously, allowing a Host preference event or stale read to observe English (`"No Workspace"`) instead of settled Chinese heading.
+- **`0.2.1-rc.2` browser acceptance (`124633320555`)**: failed at `scripts/e2e/acceptance.mjs:194` on workspace detachment timeout (2 create requests, 0 detach requests). Native menu elements measure hidden portals and reposition against anchors per frame; test clicks dispatched to cached coordinates without confirming element visibility, enabled state, hit-testing, and frame stability.
+
+#### Follow-up repairs and isolation
+1. **Click target readiness and bounded frame wait (`scripts/e2e/driver.mjs`)**:
+   - Elements must be visible, enabled, and pass document hit-testing.
+   - Post-hover readiness revalidates element connectivity, bounds, and hit target across animation frames.
+   - Frame readiness is bounded by at most 250 ms or the outer click budget via page and Node timers, preventing hangs in background tabs or under throttled timers.
+   - Exact label matching strictly differentiates `"No Workspace"` from `"No Workspace acceptance"`.
+2. **Locale persistence synchronization (`test/fixtures/browser-acceptance.client.js`, `scripts/e2e/acceptance.mjs`)**:
+   - QA helper intercepts native settings write during `setLocale`, restores original descriptor immediately, and awaits native persistence before asserting settled locale and capturing heading atomically.
+   - Added unit tests in `test/acceptance-fixture.test.mjs` (increasing unit test suite from 146 to 148 tests).
+3. **Guest browser profile isolation (`scripts/e2e/browser-isolation.mjs`)**:
+   - Launches Edge with `--guest`, `--enable-automation`, `--disable-sync`, `--disable-extensions`, `--disable-component-extensions-with-background-pages`, and disabled sign-in features (`msImplicitSignin,msForceBrowserSignIn`).
+   - Verifies browser command line and owned profile state at startup and post-shutdown (0 accounts, 0 signed-in profiles, 0 installed user extensions, 0 unexpected pages/targets).
+4. **Validation and independent review**:
+   - Shipped plugin source code remains 0 bytes changed.
+   - Independent review confirmed PASS across rounds 2 and 3 on `8eb442c574e88fea8e04504b8afa3daeeec1b70b`.
+   - Independent negative control confirmed driver stall recovery (611 ms timeout on 600 ms budget vs old 2.5s hang) and browser profile isolation (0 accounts/extensions).
+   - All 148 automated tests (`npm test`), 4 release tool checks (`npm run check:release-tools`), 10 publish tests (`scripts/npm-publish.test.mjs`), and package check (`npm run check:package`) pass.
+   - Local runtime acceptance confirms functional navigation, detachment, draft transfer, durability, and isolation across `0.2.0-rc.2`, `0.2.1-rc.2`, and `0.2.1-rc.5`. Known upstream `SidebarSession` released reference race on rapid restart observed under strict browser error checks on some rc.2 runs is preserved without suppressing error assertions.
+   - All QA processes and ports stopped cleanly.

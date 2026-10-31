@@ -39,7 +39,7 @@
     "pretest": "npm run build",
     "prepack": "npm run build",
     "prepublishOnly": "node scripts/check-publish-source.mjs",
-    "test": "node scripts/build-client.mjs --check && node test/index.test.mjs && node test/robustness.test.mjs && node --test test/client-loading.test.mjs && node --test test/persistence.test.mjs && node --test test/client-interactions.test.mjs",
+    "test": "node scripts/build-client.mjs --check && node test/index.test.mjs && node test/robustness.test.mjs && node --test test/client-loading.test.mjs && node --test test/persistence.test.mjs && node --test test/client-interactions.test.mjs && node --test test/acceptance-fixture.test.mjs",
     "test:e2e": "node scripts/build-client.mjs && node scripts/e2e/acceptance.mjs",
     "check:package": "node scripts/check-package.mjs",
     "check:release": "node scripts/verify-release.mjs",

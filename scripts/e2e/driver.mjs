@@ -91,35 +91,32 @@ export class Driver {
     throw new Error(`waitFor timed out${label ? ` (${label})` : ''}: ${expression} — last value ${JSON.stringify(last)}`);
   }
 
-  /** Bounding box of the first element matching `selector`, or null when absent/hidden. */
-  box(selector) {
+  /** A visible, enabled, hit-testable target; hidden portal measurement is not readiness. */
+  box(selector, text, exact = false) {
     return this.eval(`(() => {
-      const el = document.querySelector(${JSON.stringify(selector)});
+      const candidates = [...document.querySelectorAll(${JSON.stringify(selector)})];
+      const el = candidates.find(e => {
+        const label = (e.innerText || '').trim();
+        return ${text === undefined ? 'true' : exact ? `label === ${JSON.stringify(text)}` : `label.includes(${JSON.stringify(text)})`}
+          && getComputedStyle(e).visibility === 'visible' && !e.matches(':disabled')
+          && !e.closest('[inert]') && e.getBoundingClientRect().width > 0 && e.getBoundingClientRect().height > 0;
+      });
       if (!el) return null;
       let r = el.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return null;
       if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) {
         el.scrollIntoView({ block: 'center', inline: 'nearest' });
         r = el.getBoundingClientRect();
       }
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, text: (el.innerText || '').trim().slice(0, 80) };
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      if (!el.contains(document.elementFromPoint(x, y))) return null;
+      window.__dshQaClickTarget = el;
+      return { x, y, w: r.width, h: r.height, text: (el.innerText || '').trim().slice(0, 80) };
     })()`);
   }
 
   /** Bounding box of the first element matching `selector` whose text contains `text`. */
-  boxWithText(selector, text) {
-    return this.eval(`(() => {
-      const els = [...document.querySelectorAll(${JSON.stringify(selector)})];
-      const el = els.find((e) => (e.innerText || '').includes(${JSON.stringify(text)}));
-      if (!el) return null;
-      let r = el.getBoundingClientRect();
-      if (r.width === 0 && r.height === 0) return null;
-      if (r.top < 0 || r.bottom > innerHeight || r.left < 0 || r.right > innerWidth) {
-        el.scrollIntoView({ block: 'center', inline: 'nearest' });
-        r = el.getBoundingClientRect();
-      }
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height, text: (el.innerText || '').trim().slice(0, 80) };
-    })()`);
+  boxWithText(selector, text, exact = false) {
+    return this.box(selector, text, exact);
   }
 
   async clickAt(x, y) {
@@ -130,27 +127,59 @@ export class Driver {
   }
 
   async click(selector, { timeoutMs = 10000 } = {}) {
-    const deadline = Date.now() + timeoutMs;
-    let target = null;
-    while (Date.now() < deadline && !target) {
-      target = await this.box(selector);
-      if (!target) await this.sleep(200);
-    }
-    if (!target) throw new Error(`click: no visible element for ${selector}`);
-    await this.clickAt(target.x, target.y);
-    return target;
+    return this.clickReady(() => this.box(selector), selector, timeoutMs);
   }
 
-  async clickText(selector, text, { timeoutMs = 10000 } = {}) {
+  async clickText(selector, text, { timeoutMs = 10000, exact = false } = {}) {
+    return this.clickReady(() => this.boxWithText(selector, text, exact), `${selector} text ${JSON.stringify(text)}`, timeoutMs);
+  }
+
+  async clickReady(locate, label, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
-    let target = null;
-    while (Date.now() < deadline && !target) {
-      target = await this.boxWithText(selector, text);
-      if (!target) await this.sleep(200);
+    while (Date.now() < deadline) {
+      const target = await locate();
+      if (!target) { await this.sleep(50); continue; }
+      await this.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: target.x, y: target.y });
+      // Native portals track their anchor per frame. Hover may also move or
+      // replace a row. Recheck identity, geometry and hit testing after paint.
+      const frameBudget = Math.min(250, Math.max(0, deadline - Date.now()));
+      if (!frameBudget) break;
+      let frameTimer;
+      const frameWait = this.eval(`new Promise(resolve => {
+        let frame;
+        const finish = value => { clearTimeout(timer); cancelAnimationFrame(frame); resolve(value); };
+        const timer = setTimeout(() => finish(false), ${frameBudget});
+        const el = window.__dshQaClickTarget;
+        const matches = () => {
+          if (!el?.isConnected || el.matches(':disabled') || el.closest('[inert]') || getComputedStyle(el).visibility !== 'visible') return false;
+          const r = el.getBoundingClientRect();
+          return Math.abs(r.left + r.width/2 - ${target.x}) < 0.5 && Math.abs(r.top + r.height/2 - ${target.y}) < 0.5
+            && el.contains(document.elementFromPoint(${target.x}, ${target.y}));
+        };
+        frame = requestAnimationFrame(() => { const first = matches(); frame = requestAnimationFrame(() => finish(first && matches())); });
+      })`);
+      // Background tabs can suspend animation frames and throttle page timers.
+      // The Node timer also bounds the CDP promise by the remaining click budget.
+      let ready;
+      try {
+        ready = await Promise.race([frameWait, new Promise(resolve => {
+          frameTimer = setTimeout(() => resolve(false), frameBudget);
+        })]);
+      } finally { clearTimeout(frameTimer); }
+      if (!ready) continue;
+      if (Date.now() >= deadline) break;
+      // Once pressed, never retry: a second activation could duplicate a real
+      // action. The captured click must belong to the target we just checked.
+      await this.eval(`window.__dshQaClicked = false; document.addEventListener('click', function observe(e) {
+        window.__dshQaClicked = window.__dshQaClickTarget?.contains(e.target) === true;
+      }, {capture:true, once:true})`);
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await this.send('Input.dispatchMouseEvent', { type, x: target.x, y: target.y, button: 'left', clickCount: 1 });
+      }
+      if (!await this.eval('window.__dshQaClicked')) throw new Error(`click target changed during input: ${label}`);
+      return target;
     }
-    if (!target) throw new Error(`clickText: no visible element for ${selector} containing ${JSON.stringify(text)}`);
-    await this.clickAt(target.x, target.y);
-    return target;
+    throw new Error(`click: no stable actionable target for ${label}`);
   }
 
   /** Hover a row first so its hover-only action buttons mount, then click one. */

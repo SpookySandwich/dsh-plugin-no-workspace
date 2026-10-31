@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Driver } from './driver.mjs';
+import { checkDriver } from './driver-regression.mjs';
+import { isolationArgs, checkBrowserIsolation, checkProfileIsolation } from './browser-isolation.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const modules = path.resolve(process.env.DSH_QA_MODULES ?? path.join(root, 'node_modules'));
@@ -29,7 +31,8 @@ fs.writeFileSync(path.join(qaClient, 'package.json'), JSON.stringify({ name: 'no
     '@deepseek-ai/dsh-client-ui-workspace', '@deepseek-ai/dsh-api-session-controller',
     '@deepseek-ai/dsh-api-workspace-controller', '@deepseek-ai/dsh-client-ui-conversation',
     '@deepseek-ai/dsh-client-ui-renderer', '@deepseek-ai/dsh-client-ui-agent-preset',
-    '@deepseek-ai/dsh-client-locale',
+     '@deepseek-ai/dsh-client-locale',
+     '@deepseek-ai/dsh-client-ui-settings',
   ] } } }));
 fs.writeFileSync(path.join(qaClient, 'index.js'), 'export function apply() {}');
 fs.writeFileSync(path.join(qaClient, 'cordis.patch.yml'), '- insert:\n    - id: qa-client\n      name: no-workspace-qa-client\n');
@@ -45,6 +48,7 @@ const processes = [];
 const origins = [];
 const requests = [];
 let debugPort;
+let browserIsolation;
 function startHost() {
   host = spawn(process.execPath, ['--expose-internals', cli, '--profile', 'web', '--no-open', '--port', '0'], {
     env: { ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' },
@@ -75,7 +79,7 @@ async function stop(child) {
 try {
   const url = await waitFor(() => hostLog.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/[^\s]*)/)?.[1], 'host startup', 180000);
   origins.push(new URL(url).origin);
-  browser = spawn(browserPath, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--lang=en-US',
+  browser = spawn(browserPath, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--lang=en-US', ...isolationArgs,
     '--remote-debugging-port=0', `--user-data-dir=${path.join(home, 'browser')}`, '--window-size=1440,1000', 'about:blank'],
   { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
   browser.stderr.on('data', data => browserLog += data);
@@ -83,6 +87,8 @@ try {
   const port = Number(await waitFor(() => browserLog.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)/)?.[1], 'browser startup'));
   debugPort = port;
   driver = await Driver.attach({ debugPort: port, appOrigin: new URL(url).origin, shotDir: output });
+  browserIsolation = await checkBrowserIsolation(driver, path.join(home, 'browser'));
+  await checkDriver(driver);
   const pendingRequests = new Set();
   driver.onMessage(message => {
     const request = message.params?.request;
@@ -124,14 +130,15 @@ try {
   await driver.waitFor('!!window.__noWorkspaceQa', { label: 'QA client registration' });
   const sidebarChecks = [];
   for (const [locale, title] of [['en', 'No Workspace'], ['zh', '无工作区'], ['en', 'No Workspace']]) {
-    await driver.eval(`window.__noWorkspaceQa.setLocale(${JSON.stringify(locale)})`);
+    assert.equal(await driver.eval(`window.__noWorkspaceQa.setLocale(${JSON.stringify(locale)})`), locale, 'Native locale write settled');
     await driver.waitFor(`document.documentElement.lang === ${JSON.stringify(locale === 'zh' ? 'zh-CN' : locale)}`, { label: 'native locale switch' });
-    const sidebar = await driver.eval(`(() => {
+    const sidebar = await driver.waitFor(`(() => {
       const section = document.querySelector('[data-dsh-nw-ungrouped]');
       const header = getComputedStyle(section, '::before');
       const row = section.querySelector('[aria-selected]');
       const nativeHeader = section.querySelector('[data-row-key="workspace:"]');
       const workspace = document.querySelector('[data-row-key^="workspace:"]:not([data-row-key="workspace:"])');
+      if (document.documentElement.lang !== ${JSON.stringify(locale === 'zh' ? 'zh-CN' : locale)} || section.getAttribute('data-dsh-nw-heading') !== ${JSON.stringify(title)}) return false;
       return { locale: document.documentElement.lang, content: header.content,
         label: section.getAttribute('data-dsh-nw-heading'), display: header.display,
         border: getComputedStyle(section).borderTopWidth,
@@ -140,7 +147,7 @@ try {
         workspaceVisible: workspace.getBoundingClientRect().height > 0,
         workspaceMarked: workspace.parentElement.hasAttribute('data-dsh-nw-ungrouped'),
         rowVisible: row.getBoundingClientRect().height > 0 };
-    })()`);
+    })()`, { label: 'localized sidebar snapshot' });
     sidebarChecks.push(sidebar);
     fs.writeFileSync(path.join(output, 'sidebar.json'), JSON.stringify(sidebarChecks, null, 2));
     await driver.shot(`sidebar-${locale}`);
@@ -178,7 +185,7 @@ try {
   const beforePickId = await driver.eval('window.__noWorkspaceQa.current()');
   await driver.eval('window.__noWorkspaceQa.holdWorkspaceNavigation()');
   await driver.click('button[data-dsh-nw-chip]');
-  await driver.clickText('button[role="menuitem"]', 'No Workspace acceptance');
+  await driver.clickText('button[role="menuitem"]', 'No Workspace acceptance', { exact: true });
   await driver.waitFor(`[...document.querySelectorAll('button[aria-haspopup="menu"]')].some(b=>b.innerText.trim()==='No Workspace acceptance')`, { label: 'optimistic workspace chip' });
   assert.equal(await driver.eval('window.__noWorkspaceQa.current()'), beforePickId);
   assert.equal(await driver.eval(openComplete), true, 'Previous standalone is already open');
@@ -190,7 +197,7 @@ try {
   const selectedForDetach = await driver.eval('window.__noWorkspaceQa.current()');
   assert.ok(beforeDetach.sessionIds.includes(selectedForDetach), 'Waited for actual workspace membership before reopening the picker');
   await driver.clickText('button[aria-haspopup="menu"]', 'No Workspace acceptance');
-  await driver.clickText('button[role="menuitem"]', 'No Workspace');
+  await driver.clickText('button[role="menuitem"]', 'No Workspace', { exact: true });
   await driver.waitFor(noWorkspace, { label: 'workspace detachment' });
   const detachedId = await waitFor(() => requests.find(r => r.path === '/no-workspace/detach' && r.body.sessionId)?.body.sessionId, 'detach request');
   assert.equal(detachedId, selectedForDetach, 'Detach targets the conversation shown after workspace navigation');
@@ -323,7 +330,13 @@ try {
     }
   }
   assert.deepEqual(driver.appErrors(), []);
+  browserIsolation = await checkBrowserIsolation(driver, path.join(home, 'browser'), origins);
   const screenshot = await driver.shot('acceptance');
+  driver.close();
+  driver = undefined;
+  await stop(browser);
+  const profileIsolation = checkProfileIsolation(path.join(home, 'browser'));
+  fs.writeFileSync(path.join(output, 'browser-isolation.json'), JSON.stringify({ ...browserIsolation, ...profileIsolation }, null, 2));
   const report = { ok: true, dsh: version, processes, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized sidebar heading and separator', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'optimistic workspace chip does not complete navigation', 'draft transfer', 'detachment', 'fresh and detached blank durability across host restart and reopen', ...optionChecks, 'no browser errors'] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));

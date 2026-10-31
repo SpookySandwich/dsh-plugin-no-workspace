@@ -1,7 +1,7 @@
 window.__ModuleLoader__.load({
   id: 'no-workspace-qa-client',
   factory: () => ({
-    inject: ['uiWorkspace', 'sessions', 'workspaces', 'conversation', 'slots', 'locale'],
+    inject: ['uiWorkspace', 'sessions', 'workspaces', 'conversation', 'slots', 'locale', 'configForms'],
     apply(ctx) {
       let resumeWorkspace;
       const originalOpenWorkspace = ctx.uiWorkspace.openWorkspace;
@@ -13,7 +13,23 @@ window.__ModuleLoader__.load({
       const current = () => Object.values(ctx.sessions.list.getSnapshot().byId)
         .find(row => (row.retainedBy.mainView || 0) > 0)?.id;
       window.__noWorkspaceQa = {
-        setLocale: id => ctx.locale.setLocale(id),
+        async setLocale(id) {
+          // LocaleRuntime publishes optimistically and discards the settings
+          // promise. Observe the actual native write, without issuing a second
+          // write or treating the transient document language as completion.
+          const scope = ctx.configForms.get('locale');
+          const descriptor = Object.getOwnPropertyDescriptor(scope, 'set');
+          const original = scope.set;
+          let pending;
+          scope.set = function (...args) { return pending = original.apply(this, args); };
+          try { ctx.locale.setLocale(id); }
+          finally {
+            if (descriptor) Object.defineProperty(scope, 'set', descriptor);
+            else delete scope.set;
+          }
+          if (!pending || !await pending) throw new Error('Native locale preference was not saved');
+          return ctx.locale.getSnapshot().active;
+        },
         async start(options, workspaceId) {
           await ctx.uiWorkspace.startSession(workspaceId, options);
           return current();
