@@ -54,3 +54,24 @@ Windows, Node 22.19.0, npm 10.9.3, official npm DSH Web runtimes, isolated headl
 - UI and navigation limits: More menu creation was verified through the identical `uiWorkspace.startSession` API contract rather than direct mouse clicks on the menu button; multiple workspaces behavior was verified via code inspection and runtime API contracts. No unsolicited UI/sidebar functional changes were introduced after PASS.
 
 README compatibility/changelog text and package version were completed by the Writer. No PR, issue/comment, email, schedule, or child delegation was performed. The main checkout and its untracked reviews were not edited. External-worktree Git operations use exact-path CLI because Home app Git controls cannot resolve this tree.
+
+## CI blocker recovery (run 41101258593) and validation
+
+Parent `b9122e89-8ae5-44c6-9228-06b0cdb3dd4d`, event `recovery:no-workspace:1.4.0:ci-41101258593`.
+Public base: `275d0fa1eb8f706d3dd35029dffae194b88b021b`. Shipped plugin code unchanged (0 bytes).
+
+### Symptom and root cause
+The initial public push of commit `275d0fa1eb8f706d3dd35029dffae194b88b021b` failed in GitHub Actions CI run `41101258593` on the `DSH 0.2.1-rc.2 browser acceptance` job (both attempts 1 and 2 failed at line 175 with the workspace chip selected, original draft present, and logs `[]`).
+
+Investigation and local reproduction reproduced the failure: the old `inWorkspace` wait predicate checked only the optimistic workspace chip and `openState` of the current session. Because the previous standalone session was already open, an optimistic chip rendered before native asynchronous navigation finished could satisfy `inWorkspace`. When acceptance proceeded to reopen the picker to detach, the click raced native view replacement: the menu vanished before click registration, no `/no-workspace/detach` request was sent, and the session remained attached to the workspace.
+
+### Repair and verification
+1. **Harness wait predicate strengthening (`scripts/e2e/acceptance.mjs`, `test/fixtures/browser-acceptance.client.js`)**:
+   - `inWorkspace` wait now verifies actual workspace membership via `window.__noWorkspaceQa.workspaceOf(window.__noWorkspaceQa.current()) === 'No Workspace acceptance'` in addition to the chip and open state.
+   - Added deterministic regression gate `holdWorkspaceNavigation()` / `resumeWorkspaceNavigation()` to assert that an optimistic chip does not complete workspace navigation while holding native navigation.
+   - Validated that the old wait fails the deterministic regression check (`true !== false`), while the updated predicate passes 30 consecutive live picker cycles on `0.2.1-rc.2`.
+   - Verified exact detached session ID assertions and captured requests/logs on failure.
+2. **Attacker and independent validation**:
+   - Independent Attacker Opus (`a979a261-ac9b-48f1-a684-cf38224cda0b`) confirmed VERDICT PASS round 1 on `cdc19a0`.
+   - All 3 runtime acceptance suites (`0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`), 146 unit/robustness/persistence tests, 4 release-tool tests, 10 publish-tool tests, and package check passed cleanly.
+   - All QA processes and ports stopped cleanly.

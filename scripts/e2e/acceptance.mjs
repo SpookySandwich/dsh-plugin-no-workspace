@@ -42,6 +42,9 @@ fs.copyFileSync(path.join(root, 'test/fixtures/browser-acceptance.mjs'), path.jo
 fs.writeFileSync(path.join(profile, 'cordis.patch.yml'), '- insert:\n    - id: no-workspace-qa\n      name: ./fixture.mjs\n');
 let hostLog = '', previousHostLog = '', browserLog = '', browser, driver, host;
 const processes = [];
+const origins = [];
+const requests = [];
+let debugPort;
 function startHost() {
   host = spawn(process.execPath, ['--expose-internals', cli, '--profile', 'web', '--no-open', '--port', '0'], {
     env: { ...process.env, DSH_HOME: home, DSH_TELEMETRY_DISABLED: '1' },
@@ -71,14 +74,15 @@ async function stop(child) {
 }
 try {
   const url = await waitFor(() => hostLog.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/[^\s]*)/)?.[1], 'host startup', 180000);
+  origins.push(new URL(url).origin);
   browser = spawn(browserPath, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--lang=en-US',
     '--remote-debugging-port=0', `--user-data-dir=${path.join(home, 'browser')}`, '--window-size=1440,1000', 'about:blank'],
   { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
   browser.stderr.on('data', data => browserLog += data);
   processes.push({ kind: 'browser', pid: browser.pid });
   const port = Number(await waitFor(() => browserLog.match(/DevTools listening on ws:\/\/127\.0\.0\.1:(\d+)/)?.[1], 'browser startup'));
+  debugPort = port;
   driver = await Driver.attach({ debugPort: port, appOrigin: new URL(url).origin, shotDir: output });
-  const requests = [];
   const pendingRequests = new Set();
   driver.onMessage(message => {
     const request = message.params?.request;
@@ -107,7 +111,10 @@ try {
   });
   const openComplete = `window.__noWorkspaceQa?.opened(window.__noWorkspaceQa.current())`;
   const noWorkspace = `${openComplete} && [...document.querySelectorAll('button[data-dsh-nw-chip]')].some(b=>b.innerText.trim()==='No Workspace')`;
-  const inWorkspace = `${openComplete} && [...document.querySelectorAll('button[aria-haspopup="menu"]')].some(b=>b.innerText.trim()==='No Workspace acceptance')`;
+  // The chip is optimistic: the previous (already open) standalone session can
+  // still own mainView while it displays the newly picked workspace. Wait for
+  // membership too, or a second picker click can race the native view change.
+  const inWorkspace = `${openComplete} && window.__noWorkspaceQa.workspaceOf(window.__noWorkspaceQa.current()) === 'No Workspace acceptance' && [...document.querySelectorAll('button[aria-haspopup="menu"]')].some(b=>b.innerText.trim()==='No Workspace acceptance')`;
   await driver.eval(`[...document.querySelectorAll('button[aria-label="New session"]')].find(b=>b.getBoundingClientRect().width>0).click()`);
   await driver.waitFor(noWorkspace, { label: 'standalone navigation' });
   assert.equal(requests.filter(r => r.path === '/no-workspace/create').length, 1);
@@ -165,15 +172,28 @@ try {
   assert.equal(requests.filter(r => r.path === '/no-workspace/create').length, 2, 'Ordinary New Session creates a fresh default-preset blank');
   await driver.typeInto('[data-composer-input]', 'LOCAL NO WORKSPACE QA DRAFT');
   await driver.waitFor(`document.querySelector('[data-composer-input]').innerText.includes('LOCAL NO WORKSPACE QA DRAFT')`, { label: 'editable standalone composer' });
+  // Hold only the native navigation boundary, keeping the actual picker and
+  // its optimistic chip live. This deterministically exercises the rc.2 race
+  // that let an already-open standalone satisfy the old workspace wait.
+  const beforePickId = await driver.eval('window.__noWorkspaceQa.current()');
+  await driver.eval('window.__noWorkspaceQa.holdWorkspaceNavigation()');
   await driver.click('button[data-dsh-nw-chip]');
   await driver.clickText('button[role="menuitem"]', 'No Workspace acceptance');
+  await driver.waitFor(`[...document.querySelectorAll('button[aria-haspopup="menu"]')].some(b=>b.innerText.trim()==='No Workspace acceptance')`, { label: 'optimistic workspace chip' });
+  assert.equal(await driver.eval('window.__noWorkspaceQa.current()'), beforePickId);
+  assert.equal(await driver.eval(openComplete), true, 'Previous standalone is already open');
+  assert.equal(await driver.eval(inWorkspace), false, 'Optimistic chip must not complete workspace navigation');
+  await driver.eval('window.__noWorkspaceQa.resumeWorkspaceNavigation()');
   await driver.waitFor(inWorkspace, { label: 'workspace picker selection' });
   await driver.waitFor(`document.querySelector('[data-composer-input]').innerText.includes('LOCAL NO WORKSPACE QA DRAFT')`, { label: 'native draft transfer' });
   const beforeDetach = await driver.eval(`fetch('/qa/no-workspace').then(r=>r.json())`);
+  const selectedForDetach = await driver.eval('window.__noWorkspaceQa.current()');
+  assert.ok(beforeDetach.sessionIds.includes(selectedForDetach), 'Waited for actual workspace membership before reopening the picker');
   await driver.clickText('button[aria-haspopup="menu"]', 'No Workspace acceptance');
   await driver.clickText('button[role="menuitem"]', 'No Workspace');
   await driver.waitFor(noWorkspace, { label: 'workspace detachment' });
   const detachedId = await waitFor(() => requests.find(r => r.path === '/no-workspace/detach' && r.body.sessionId)?.body.sessionId, 'detach request');
+  assert.equal(detachedId, selectedForDetach, 'Detach targets the conversation shown after workspace navigation');
   assert.ok(beforeDetach.sessionIds.includes(detachedId), 'The detached conversation belonged to the selected workspace');
   await driver.waitFor(`fetch('/qa/no-workspace').then(r=>r.json()).then(value => !value.sessionIds.includes(${JSON.stringify(detachedId)}))`, {
     label: 'host workspace detachment committed',
@@ -197,6 +217,7 @@ try {
   hostLog = '';
   startHost();
   const restartedUrl = await waitFor(() => hostLog.match(/dsh web: (http:\/\/127\.0\.0\.1:\d+\/[^\s]*)/)?.[1], 'host restart', 180000);
+  origins.push(new URL(restartedUrl).origin);
   await driver.send('Page.navigate', { url: restartedUrl });
   await driver.waitFor('!!window.__noWorkspaceQa', { timeoutMs: 60000, label: 'restarted client boot' });
   for (const [id, before] of [[detachedId, durableBefore], [standaloneId, standaloneBefore]]) {
@@ -303,13 +324,15 @@ try {
   }
   assert.deepEqual(driver.appErrors(), []);
   const screenshot = await driver.shot('acceptance');
-  const report = { ok: true, dsh: version, processes, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized sidebar heading and separator', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'draft transfer', 'detachment', 'fresh and detached blank durability across host restart and reopen', ...optionChecks, 'no browser errors'] };
+  const report = { ok: true, dsh: version, processes, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized sidebar heading and separator', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'optimistic workspace chip does not complete navigation', 'draft transfer', 'detachment', 'fresh and detached blank durability across host restart and reopen', ...optionChecks, 'no browser errors'] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) {
   if (driver) {
     await driver.shot('failure').catch(() => {});
-    console.error(JSON.stringify({ text: await driver.eval('document.body.innerText').catch(() => ''), logs: driver.logs }));
+    const failure = { error: error.stack, requests, text: await driver.eval('document.body.innerText').catch(() => ''), logs: driver.logs };
+    fs.writeFileSync(path.join(output, 'failure.json'), JSON.stringify(failure, null, 2));
+    console.error(JSON.stringify(failure));
   }
   throw error;
 } finally {
@@ -318,6 +341,7 @@ try {
   await stop(host);
   fs.writeFileSync(path.join(output, 'host.log'), (previousHostLog + hostLog).replace(/\?token=[^\s]+/g, '?token=[test token omitted]'));
   fs.writeFileSync(path.join(output, 'processes.json'), JSON.stringify(processes, null, 2));
+  fs.writeFileSync(path.join(output, 'ownership.json'), JSON.stringify({ home, profile, browserProfile: path.join(home, 'browser'), origins, debugPort, processes }, null, 2));
   assert.equal(path.dirname(home), path.resolve(os.tmpdir()));
   assert.ok(path.basename(home).startsWith('dsh-no-workspace-e2e-'));
   fs.rmSync(home, { recursive: true, force: true });
