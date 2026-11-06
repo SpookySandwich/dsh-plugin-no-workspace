@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { JSDOM } from 'jsdom';
 import * as React from 'react';
+import { createRoot } from 'react-dom/client';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const summary = (id, fields = {}) => ({ id, blank: false, retainedBy: {}, ...fields });
@@ -36,7 +37,7 @@ function harness(t, { request, draftResult = 'applied', locale = 'en' } = {}) {
       return request ? request(url, options) : response({ detached: true, sessionId: 'created' });
     },
   });
-  const entry = { options: { priority: 0 }, component: function NativePicker() {} };
+  const entry = { options: { priority: 0 }, component: function NativePicker() { return null; } };
   const composer = { options: { priority: 0 }, component: function NativeComposer() {} };
   const nativeSidebar = function NativeSidebar() {};
   const sidebar = { options: { priority: 0 }, component: nativeSidebar };
@@ -85,8 +86,29 @@ function harness(t, { request, draftResult = 'applied', locale = 'en' } = {}) {
     dispose: () => disposers[0](),
     reapply() { const dispose = plugin.apply(ctx); disposers.push(dispose); return dispose; },
     start(workspaceId, options) { return uiWorkspace.startSession(workspaceId, options); },
+    mountPicker(props) {
+      const previous = Object.fromEntries(['window', 'document', 'IS_REACT_ACT_ENVIRONMENT'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+      Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
+      const container = dom.window.document.createElement('div');
+      dom.window.document.body.append(container);
+      const root = createRoot(container);
+      const render = next => React.act(() => root.render(React.createElement(entry.component, {
+        useWorkspaces: select => select(workspaceSnapshot), onPick() {}, onClose() {}, ...next,
+      })));
+      render(props);
+      t.after(() => {
+        React.act(() => root.unmount());
+        for (const [key, descriptor] of Object.entries(previous)) {
+          if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+          else delete globalThis[key];
+        }
+      });
+      return render;
+    },
     pick(id, onPick = () => {}) {
-      return entry.component({ useWorkspaces: select => select(workspaceSnapshot), onPick, onClose() {} }).props.onPick(id);
+      const rendered = entry.component({ useWorkspaces: select => select(workspaceSnapshot), onPick, onClose() {} });
+      const props = rendered.type === React.Fragment ? rendered.props.children[1].props : rendered.props;
+      return props.onPick(id);
     },
     update(nextSessions, nextWorkspaces) {
       if (nextSessions) sessionSnapshot = nextSessions;
@@ -449,3 +471,59 @@ test('a collapsed standalone section expands once and releases its heading when 
   assert.equal(row.parentElement.hasAttribute('data-dsh-nw-ungrouped'), false);
   assert.equal(row.parentElement.hasAttribute('data-dsh-nw-heading'), false);
 });
+
+test('standalone chip follows semantic picker state through all host locales and native text updates', async t => {
+  const h = harness(t, { locale: 'ja' });
+  h.document.body.innerHTML = '<button aria-haspopup="menu" aria-label="ワークスペースを選択"><svg></svg><span>ワークスペースを選択</span><svg></svg></button>';
+  const button = h.document.querySelector('button');
+  const label = button.querySelector('span');
+  const anchorRef = { current: button };
+  const render = h.mountPicker({ anchorRef, selectedId: undefined });
+  await tick();
+  assert.equal(label.textContent, 'No Workspace');
+  assert.equal(button.getAttribute('aria-label'), 'No Workspace');
+  assert.equal(button.hasAttribute('data-dsh-nw-chip'), true);
+  for (const locale of ['en', 'zh-CN', 'ja', 'es', 'fr', 'de', 'ru', 'pt', 'en']) {
+    h.document.documentElement.lang = locale;
+    // Simulate the native locale seat updating both label and accessible name.
+    label.firstChild.data = `Native prompt (${locale})`;
+    button.setAttribute('aria-label', `Native prompt (${locale})`);
+    render({ anchorRef, selectedId: undefined });
+    await tick();
+    const expected = locale === 'zh-CN' ? '无工作区' : 'No Workspace';
+    assert.equal(label.textContent, expected, locale);
+    assert.equal(button.getAttribute('aria-label'), expected, locale);
+    assert.equal(button.hasAttribute('data-dsh-nw-chip'), true, locale);
+  }
+  h.dispose();
+  assert.equal(label.textContent, 'Native prompt (en)');
+  assert.equal(button.getAttribute('aria-label'), 'Native prompt (en)');
+  assert.equal(button.hasAttribute('data-dsh-nw-chip'), false);
+});
+
+for (const title of ['No Workspace', 'Choose workspace', '无工作区', '选择工作区', '研究資料']) {
+  test(`a real workspace named ${JSON.stringify(title)} is never marked standalone`, async t => {
+    const h = harness(t);
+    h.document.body.innerHTML = '<button aria-haspopup="menu" aria-label="Choose workspace"><svg></svg><span>Choose workspace</span><svg></svg></button><button id="other" aria-haspopup="menu"><span>No Workspace</span></button>';
+    const button = h.document.querySelector('button');
+    const label = button.querySelector('span');
+    const anchorRef = { current: button };
+    const render = h.mountPicker({ anchorRef, selectedId: undefined });
+    await tick();
+    // React skips a text write when the real title equals its prior virtual
+    // placeholder. Otherwise it writes the real title, even if it happens to
+    // equal the plugin's current replacement.
+    if (title !== 'Choose workspace') label.firstChild.data = title;
+    render({ anchorRef, selectedId: 'real-workspace' });
+    await tick();
+    assert.equal(label.textContent, title);
+    assert.equal(button.getAttribute('aria-label'), 'Choose workspace');
+    assert.equal(button.hasAttribute('data-dsh-nw-chip'), false);
+    assert.equal(h.document.querySelector('#other').hasAttribute('data-dsh-nw-chip'), false);
+    label.firstChild.data = 'Choose workspace';
+    render({ anchorRef, selectedId: undefined });
+    await tick();
+    assert.equal(label.textContent, 'No Workspace', 'Detachment restores the standalone label');
+    assert.equal(button.hasAttribute('data-dsh-nw-chip'), true);
+  });
+}

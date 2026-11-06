@@ -42,21 +42,34 @@ jobs:
         run: git diff --exit-code
 
   browser:
-    name: DSH ${{ matrix.dsh }} browser acceptance
+    name: DSH ${{ matrix.dsh }} / Node ${{ matrix.node }} browser acceptance
     runs-on: windows-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        dsh: ['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5']
+        include:
+          - dsh: '0.2.0-rc.2'
+            node: 22
+          - dsh: '0.2.1-rc.2'
+            node: 22
+          - dsh: '0.2.1-rc.5'
+            node: 22
+          - dsh: '0.2.2-rc.1'
+            node: 24
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
-      - run: npm install --prefix "$env:RUNNER_TEMP/dsh-runtime" --no-audit --no-fund --save-exact "@deepseek-ai/dsh@${{ matrix.dsh }}"
+      - name: Install packed plugin with strict host peers
+        run: |
+          npm pack --pack-destination "$env:RUNNER_TEMP"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          npm install --prefix "$env:RUNNER_TEMP/dsh-runtime" --strict-peer-deps --no-audit --no-fund --save-exact "@deepseek-ai/dsh@${{ matrix.dsh }}" "$env:RUNNER_TEMP/dsh-plugin-no-workspace-$version.tgz"
       - run: npm run test:e2e
         env:
           DSH_QA_MODULES: ${{ runner.temp }}/dsh-runtime/node_modules

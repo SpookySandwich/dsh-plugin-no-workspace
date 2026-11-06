@@ -14,7 +14,8 @@ const modules = path.resolve(process.env.DSH_QA_MODULES ?? path.join(root, 'node
 const cli = path.join(modules, '@deepseek-ai/dsh/lib/bin.js');
 assert.ok(fs.existsSync(cli), 'Set DSH_QA_MODULES to an official DSH node_modules directory');
 const version = JSON.parse(fs.readFileSync(path.join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')).version;
-assert.ok(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5'].includes(version), `Unsupported acceptance runtime: ${version}`);
+assert.ok(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5', '0.2.2-rc.1'].includes(version), `Unsupported acceptance runtime: ${version}`);
+const explicitDraftPolicies = ['0.2.1-rc.5', '0.2.2-rc.1'].includes(version);
 const browserPath = process.env.DSH_QA_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 assert.ok(fs.existsSync(browserPath), 'Set DSH_QA_BROWSER to a Chromium or Edge executable');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-no-workspace-e2e-'));
@@ -129,9 +130,25 @@ try {
   await driver.waitFor(`!!document.querySelector('[data-dsh-nw-ungrouped] [aria-selected]')`, { label: 'standalone sidebar row' });
   await driver.waitFor('!!window.__noWorkspaceQa', { label: 'QA client registration' });
   const sidebarChecks = [];
-  for (const [locale, title] of [['en', 'No Workspace'], ['zh', '无工作区'], ['en', 'No Workspace']]) {
+  const locales = version === '0.2.2-rc.1' ? ['en', 'zh', 'ja', 'es', 'fr', 'de', 'ru', 'pt', 'en'] : ['en', 'zh', 'en'];
+  const chipChecks = [];
+  async function checkStandaloneChip(locale, stage) {
+    const title = locale === 'zh' ? '无工作区' : 'No Workspace';
+    const chip = await driver.waitFor(`(() => {
+      const button = document.querySelector('button[data-dsh-nw-chip]');
+      if (!button || button.innerText.trim() !== ${JSON.stringify(title)} || button.getAttribute('aria-label') !== ${JSON.stringify(title)}) return false;
+      return { text: button.innerText.trim(), aria: button.getAttribute('aria-label'), width: button.getBoundingClientRect().width,
+        icon: getComputedStyle(button, '::before').maskImage };
+    })()`, { label: `${locale} ${stage} semantic standalone chip` });
+    assert.ok(chip.width > 0);
+    assert.notEqual(chip.icon, 'none');
+    chipChecks.push({ locale, stage, ...chip });
+  }
+  for (const locale of locales) {
+    const title = locale === 'zh' ? '无工作区' : 'No Workspace';
     assert.equal(await driver.eval(`window.__noWorkspaceQa.setLocale(${JSON.stringify(locale)})`), locale, 'Native locale write settled');
     await driver.waitFor(`document.documentElement.lang === ${JSON.stringify(locale === 'zh' ? 'zh-CN' : locale)}`, { label: 'native locale switch' });
+    await checkStandaloneChip(locale, 'live switch');
     const sidebar = await driver.waitFor(`(() => {
       const section = document.querySelector('[data-dsh-nw-ungrouped]');
       const header = getComputedStyle(section, '::before');
@@ -249,6 +266,38 @@ try {
   if (await driver.eval(`!!document.querySelector(${JSON.stringify(accountClose)})`)) {
     await driver.click(accountClose);
   }
+  if (version === '0.2.2-rc.1') {
+    const fixture = await driver.eval(`fetch('/qa/no-workspace').then(r=>r.json())`);
+    for (const title of ['No Workspace', 'Choose workspace', '研究資料']) {
+      await driver.eval(`fetch('/qa/no-workspace?title=' + encodeURIComponent(${JSON.stringify(title)}), {method: 'PATCH'}).then(r=>r.json())`);
+      await driver.waitFor(`window.__noWorkspaceQa.workspaceTitle(${JSON.stringify(fixture.workspaceId)}) === ${JSON.stringify(title)}`, { label: 'native workspace rename projection' });
+      await driver.eval(`window.__noWorkspaceQa.start(undefined, ${JSON.stringify(fixture.workspaceId)})`);
+      await driver.waitFor(`window.__noWorkspaceQa.workspaceOf(window.__noWorkspaceQa.current()) === ${JSON.stringify(title)} && window.__noWorkspaceQa.opened(window.__noWorkspaceQa.current())`, { label: 'named real workspace selected' });
+      const realChip = `[...document.querySelectorAll('[data-composer-seat] button[aria-haspopup="menu"]')].find(b=>b.innerText.trim()===${JSON.stringify(title)})`;
+      await driver.waitFor(`!!(${realChip}) && !(${realChip}).hasAttribute('data-dsh-nw-chip')`, { label: 'real title must not identify a standalone chip' });
+      assert.equal(await driver.eval(`(${realChip}).getAttribute('aria-label')`), 'Choose workspace');
+      await driver.clickText('[data-composer-seat] button[aria-haspopup="menu"]', title, { exact: true });
+      // The synthetic entry is first, including when a real workspace shares
+      // its title and the native picker adds path suffixes to disambiguate it.
+      await driver.click('button[role="menuitem"]');
+      await driver.waitFor(`window.__noWorkspaceQa.workspaceOf(window.__noWorkspaceQa.current()) === undefined`, { label: 'named workspace detached' });
+      // Membership can publish before the detach response reopens the session.
+      // Finish that navigation before starting the next workspace operation.
+      await waitFor(() => pendingRequests.size === 0, 'named detach response completed');
+      await driver.waitFor(openComplete, { label: 'named detached session open completed' });
+      await checkStandaloneChip('en', `detach from ${title}`);
+      if (title === 'No Workspace') {
+        for (const locale of locales) {
+          await driver.eval(`window.__noWorkspaceQa.setLocale(${JSON.stringify(locale)})`);
+          await checkStandaloneChip(locale, 'detached session live switch');
+        }
+      }
+    }
+    await driver.eval(`fetch('/qa/no-workspace?title=No%20Workspace%20acceptance', {method: 'PATCH'}).then(r=>r.json())`);
+    await driver.waitFor(`window.__noWorkspaceQa.workspaceTitle(${JSON.stringify(fixture.workspaceId)}) === 'No Workspace acceptance'`, { label: 'restore fixture workspace title' });
+    await driver.eval(`window.__noWorkspaceQa.open(${JSON.stringify(detachedId)})`);
+    await driver.waitFor(`window.__noWorkspaceQa.current() === ${JSON.stringify(detachedId)} && window.__noWorkspaceQa.opened(${JSON.stringify(detachedId)})`, { label: 'restore original detached blank' });
+  }
   const optionChecks = [];
   if (version !== '0.2.0-rc.2') {
     await driver.waitFor('window.__noWorkspaceQa', { label: 'QA client registration' });
@@ -283,7 +332,7 @@ try {
     const plainId = await driver.eval('window.__noWorkspaceQa.current()');
     await driver.waitFor(`window.__noWorkspaceQa.opened(${JSON.stringify(plainId)})`, { label: 'plain session open completed' });
     assert.equal((await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(plainId)}).then(r=>r.json())`)).agentPreset, 'standard');
-    optionChecks.push(version === '0.2.1-rc.5'
+    optionChecks.push(explicitDraftPolicies
       ? 'real preset creator preserves different-preset blanks and reuses matching blank'
       : 'real preset creator and matching-blank reuse (rc.2 native staging still changes original blank)',
     'plain New Session restores default preset');
@@ -314,7 +363,7 @@ try {
       const combinedState = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(combined)}).then(r=>r.json())`);
       assert.deepEqual(combinedState.memberships, []);
       assert.equal(combinedState.agentPreset, 'cordis');
-      if (version === '0.2.1-rc.5') {
+      if (explicitDraftPolicies) {
         await driver.eval(`window.__noWorkspaceQa.start({prompt: 'APPENDED DRAFT', whenDraftExists: 'append'})`);
         await driver.waitFor(`document.querySelector('[data-composer-input]')?.innerText.includes('APPENDED DRAFT')`, { label: 'native append draft policy' });
         assert.ok(await driver.eval(`document.querySelector('[data-composer-input]').innerText.includes('COMBINED PRESET AND DRAFT')`));
@@ -329,6 +378,26 @@ try {
       optionChecks.push(`preset and draft standalone with workspace=${withWorkspace}`);
     }
   }
+  if (version === '0.2.2-rc.1') {
+    for (const locale of locales.slice(0, -1)) {
+      await driver.eval(`window.__noWorkspaceQa.setLocale(${JSON.stringify(locale)})`);
+      await checkStandaloneChip(locale, 'live switch before new session');
+      const freshId = await driver.eval('window.__noWorkspaceQa.start()');
+      await driver.waitFor(`window.__noWorkspaceQa.opened(${JSON.stringify(freshId)})`, { label: 'localized fresh standalone open' });
+      await checkStandaloneChip(locale, 'new session');
+      const text = `LOCAL CHIP QA ${locale}`;
+      await driver.typeInto('[data-composer-input]', text);
+      await driver.send('Page.reload');
+      await driver.waitFor(`!!window.__noWorkspaceQa && window.__noWorkspaceQa.current() === ${JSON.stringify(freshId)} && window.__noWorkspaceQa.opened(${JSON.stringify(freshId)})`, { timeoutMs: 60000, label: 'localized standalone reload' });
+      const closePrompt = '[role="dialog"] button[aria-label]';
+      if (await driver.eval(`!!document.querySelector(${JSON.stringify(closePrompt)})`)) await driver.click(closePrompt);
+      await checkStandaloneChip(locale, 'reload');
+      await driver.waitFor(`document.querySelector('[data-composer-input]')?.innerText.includes(${JSON.stringify(text)})`, { label: 'draft survives same-origin reload' });
+      if (locale === 'ja') await driver.shot('chip-ja-reloaded');
+    }
+    optionChecks.push('semantic chip in all eight host locales after switch, detach, new session and reload', 'real workspace titles do not trigger standalone styling');
+  }
+  fs.writeFileSync(path.join(output, 'chip-checks.json'), JSON.stringify(chipChecks, null, 2));
   assert.deepEqual(driver.appErrors(), []);
   browserIsolation = await checkBrowserIsolation(driver, path.join(home, 'browser'), origins);
   const screenshot = await driver.shot('acceptance');

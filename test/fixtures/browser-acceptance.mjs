@@ -16,11 +16,16 @@ export async function apply(ctx) {
     kind: 'exact', path: '/qa/no-workspace',
     async handler(request, response) {
       if (request.method === 'DELETE') await ctx.workspaceRegistry.delete(workspace.id);
+      if (request.method === 'PATCH') {
+        const title = new URL(request.url, 'http://qa.local').searchParams.get('title');
+        assert.ok(['No Workspace', 'Choose workspace', '研究資料', 'No Workspace acceptance'].includes(title));
+        await workspace.setTitle(title);
+      }
       const sessionId = new URL(request.url, 'http://qa.local').searchParams.get('sessionId');
       const session = sessionId && ctx.sessions.get(sessionId);
       const stored = sessionId ? await ctx.sessionPersistence.stat(sessionId) : undefined;
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ sessionIds: [...workspace.sessionIds],
+      response.end(JSON.stringify({ workspaceId: workspace.id, sessionIds: [...workspace.sessionIds],
         memberships: sessionId ? ctx.workspaceRegistry.list().filter(w => w.sessionIds.includes(sessionId)).map(w => w.id) : [],
         agentPreset: session ? ctx.sessionProjections.stateOf(session, 'agentPreset') : stored?.header.agentPreset,
         stored: stored ?? null,

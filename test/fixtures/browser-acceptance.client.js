@@ -36,6 +36,7 @@ window.__ModuleLoader__.load({
         },
         current,
         workspaceOf: id => ctx.workspaces.list.getSnapshot().items.find(w => w.sessionIds.includes(id))?.title,
+        workspaceTitle: id => ctx.workspaces.list.getSnapshot().items.find(w => w.workspaceId === id)?.title,
         holdWorkspaceNavigation() {
           const pending = new Promise(resolve => { resumeWorkspace = resolve; });
           ctx.uiWorkspace.openWorkspace = async function (...args) {
