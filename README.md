@@ -51,7 +51,7 @@ dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.0.tgz
 ## 设计原则
 
 - **不替换原生侧边栏**：插件适配共享的新建动作，保留原生组件及快捷键分发。
-- **不伪造文件夹**：只隐藏独立会话外层的「未分组」容器，并以顶部细分隔线和「无工作区」/ “No Workspace” 标题与上方工作区分开；真实工作区仍保留原生文件夹结构。
+- **不伪造文件夹**：只隐藏独立会话外层的「未分组」容器，并以与原生样式一致的「无工作区」/ “No Workspace” 标题和留白与上方工作区分开；会话行保留原生状态栏位，使空白、已有内容和运行中的会话标题对齐。
 - **不损坏历史**：解绑只更新工作区会话索引，完整保留会话事件、草稿与上下文。
 - **不污染执行目录**：新独立会话使用用户主目录作为中性的执行目录。
 - **不破坏语言体验**：界面随 DSH 显示「无工作区」或 “No Workspace”。
@@ -68,7 +68,7 @@ npm test
 npm run check:package
 ```
 
-自动测试覆盖宿主行为、DSH 0.2 导航契约及持久化。`npm run test:e2e` 会自行创建并清理临时 Web profile 和无头浏览器，验证真实会话创建、预设创建器（Agent Preset Creator）与草稿初始化选项、原生 Web 快捷键、显式工作区选择、草稿转移、解绑以及侧边栏独立会话区块的分隔线与中英标题。若官方 DSH `0.2.2-rc.1`（或 `0.2.1-rc.5` / `0.2.1-rc.2` / `0.2.0-rc.2`）不在当前项目依赖中，请通过 `DSH_QA_MODULES` 指定其 node_modules；也可通过 `DSH_QA_BROWSER` 指定 Chromium/Edge 路径。Windows CI 会运行此测试，结果保存在 `scratch/e2e-current/`，不会使用日常 DSH profile。
+自动测试覆盖宿主行为、DSH 0.2 导航契约及持久化。`npm run test:e2e` 会自行创建并清理临时 Web profile 和无头浏览器，验证真实会话创建、预设创建器（Agent Preset Creator）与草稿初始化选项、原生 Web 快捷键、显式工作区选择、草稿转移、解绑以及侧边栏独立会话区块的中英标题、原生标题样式与会话标题对齐。若官方 DSH `0.2.2-rc.1`（或 `0.2.1-rc.5` / `0.2.1-rc.2` / `0.2.0-rc.2`）不在当前项目依赖中，请通过 `DSH_QA_MODULES` 指定其 node_modules；也可通过 `DSH_QA_BROWSER` 指定 Chromium/Edge 路径。Windows CI 会运行此测试，结果保存在 `scratch/e2e-current/`，不会使用日常 DSH profile。
 
 ## 兼容性
 

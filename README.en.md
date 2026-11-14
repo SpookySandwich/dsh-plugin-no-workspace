@@ -51,7 +51,7 @@ Restart DSH after installing or upgrading so both host and client code reload.
 ## Design principles
 
 - **Keep the native sidebar** — adapt the shared creation action while retaining DSH's components and shortcut dispatch.
-- **Never invent a folder** — hide only the synthetic “Ungrouped” container while separating standalone conversations from workspaces above with a subtle divider and localized “No Workspace” / “无工作区” heading; real workspaces retain their native structure.
+- **Never invent a folder** — hide only the synthetic “Ungrouped” container while separating standalone conversations from workspaces above with a localized “No Workspace” / “无工作区” heading in the native style and section spacing. Preserve native status slots so blank, populated, and running conversation titles align.
 - **Preserve conversation data** — detaching updates only workspace indexes, keeping events, drafts, and context intact.
 - **Use a neutral working directory** — new standalone conversations start from the user's home directory.
 - **Respect the current language** — the UI follows DSH with “No Workspace” or “无工作区”.
@@ -68,7 +68,7 @@ npm test
 npm run check:package
 ```
 
-Automated tests cover host behavior, the DSH 0.2 navigation contract, and persistence. `npm run test:e2e` creates and removes its own temporary Web profile and headless browser. It checks real session creation, Agent Preset Creator and draft-initialization options, the native Web shortcut, explicit workspace selection, draft transfer, detachment, and the standalone sidebar section's separator and localized Chinese/English heading. Set `DSH_QA_MODULES` to an official DSH `0.2.2-rc.1` (or `0.2.1-rc.5` / `0.2.1-rc.2` / `0.2.0-rc.2`) node_modules directory if it is outside this checkout; set `DSH_QA_BROWSER` to a Chromium/Edge executable if needed. Windows CI runs this test. Results are written to `scratch/e2e-current/`. No existing DSH profile is used.
+Automated tests cover host behavior, the DSH 0.2 navigation contract, and persistence. `npm run test:e2e` creates and removes its own temporary Web profile and headless browser. It checks real session creation, Agent Preset Creator and draft-initialization options, the native Web shortcut, explicit workspace selection, draft transfer, detachment, and the standalone sidebar section's localized Chinese/English heading, native heading typography, and conversation title alignment. Set `DSH_QA_MODULES` to an official DSH `0.2.2-rc.1` (or `0.2.1-rc.5` / `0.2.1-rc.2` / `0.2.0-rc.2`) node_modules directory if it is outside this checkout; set `DSH_QA_BROWSER` to a Chromium/Edge executable if needed. Windows CI runs this test. Results are written to `scratch/e2e-current/`. No existing DSH profile is used.
 
 ## Compatibility
 

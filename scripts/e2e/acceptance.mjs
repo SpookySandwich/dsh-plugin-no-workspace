@@ -155,11 +155,21 @@ try {
       const row = section.querySelector('[aria-selected]');
       const nativeHeader = section.querySelector('[data-row-key="workspace:"]');
       const workspace = document.querySelector('[data-row-key^="workspace:"]:not([data-row-key="workspace:"])');
+      const workspaceLabel = document.querySelector('[class*="_sectionLabel"]');
+      const typography = style => Object.fromEntries(['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'color']
+        .map(key => [key, style[key]]));
+      const slot = row.querySelector(':scope > span:first-child');
+      const rowTitle = slot.nextElementSibling;
       if (document.documentElement.lang !== ${JSON.stringify(locale === 'zh' ? 'zh-CN' : locale)} || section.getAttribute('data-dsh-nw-heading') !== ${JSON.stringify(title)}) return false;
       return { locale: document.documentElement.lang, content: header.content,
         label: section.getAttribute('data-dsh-nw-heading'), display: header.display,
+        typography: typography(header), nativeTypography: typography(getComputedStyle(workspaceLabel)),
+        headingLeft: section.getBoundingClientRect().left + parseFloat(header.paddingLeft),
+        nativeHeadingLeft: workspaceLabel.getBoundingClientRect().left,
+        slotWidth: slot.getBoundingClientRect().width, titleLeft: rowTitle.getBoundingClientRect().left,
         border: getComputedStyle(section).borderTopWidth,
         gap: row.getBoundingClientRect().top - section.getBoundingClientRect().top,
+        sectionGap: section.getBoundingClientRect().top - section.previousElementSibling.getBoundingClientRect().bottom,
         nativeHeader: getComputedStyle(nativeHeader).display,
         workspaceVisible: workspace.getBoundingClientRect().height > 0,
         workspaceMarked: workspace.parentElement.hasAttribute('data-dsh-nw-ungrouped'),
@@ -171,8 +181,12 @@ try {
     assert.ok(sidebar.content.includes(title) || (sidebar.content.includes('attr(') && sidebar.label === title),
       `Standalone section needs a localized visible heading: ${JSON.stringify(sidebar)}`);
     assert.equal(sidebar.display, 'block');
-    assert.equal(sidebar.border, '1px');
-    assert.ok(sidebar.gap >= 28, 'Heading reserves space above standalone rows');
+    assert.deepEqual(sidebar.typography, sidebar.nativeTypography, 'Standalone and Workspaces headings share native typography');
+    assert.equal(sidebar.headingLeft, sidebar.nativeHeadingLeft, 'Standalone and Workspaces headings start at the same horizontal position');
+    assert.equal(sidebar.border, '0px');
+    assert.ok(sidebar.gap >= 36, 'Heading reserves space above standalone rows');
+    assert.ok(sidebar.sectionGap >= 12, 'Standalone section remains distinct from the preceding workspace without a divider');
+    assert.equal(sidebar.slotWidth, 16, 'Blank rows reserve the native status slot so their titles do not shift');
     assert.equal(sidebar.nativeHeader, 'none');
     assert.equal(sidebar.workspaceVisible, true);
     assert.equal(sidebar.workspaceMarked, false);
@@ -187,6 +201,14 @@ try {
   await driver.click(workspaceRow);
   await driver.eval(`document.querySelector('button[aria-label="New session in No Workspace acceptance"]').click()`);
   await driver.waitFor(inWorkspace, { label: 'explicit workspace navigation' });
+  const workspaceTitleLeft = await driver.waitFor(`(() => {
+    const row = document.querySelector('[role="treeitem"][aria-selected="true"]');
+    if (!row || row.closest('[data-dsh-nw-ungrouped]')) return false;
+    return row.querySelector(':scope > span:nth-child(2)').getBoundingClientRect().left;
+  })()`, { label: 'native workspace conversation title' });
+  for (const sidebar of sidebarChecks) {
+    assert.equal(sidebar.titleLeft, workspaceTitleLeft, 'Standalone New chat aligns with native workspace conversation titles');
+  }
   assert.equal(requests.filter(r => r.path === '/no-workspace/create').length, 1, 'Explicit workspace calls remain native');
   // The shipped Windows Web binding is Ctrl+Alt+N. Exercise DSH's dispatcher.
   for (const type of ['keyDown', 'keyUp']) await driver.send('Input.dispatchKeyEvent', {
@@ -406,7 +428,7 @@ try {
   await stop(browser);
   const profileIsolation = checkProfileIsolation(path.join(home, 'browser'));
   fs.writeFileSync(path.join(output, 'browser-isolation.json'), JSON.stringify({ ...browserIsolation, ...profileIsolation }, null, 2));
-  const report = { ok: true, dsh: version, processes, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized sidebar heading and separator', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'optimistic workspace chip does not complete navigation', 'draft transfer', 'detachment', 'fresh and detached blank durability across host restart and reopen', ...optionChecks, 'no browser errors'] };
+  const report = { ok: true, dsh: version, processes, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized native sidebar typography and conversation alignment', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'optimistic workspace chip does not complete navigation', 'draft transfer', 'detachment', 'fresh and detached blank durability across host restart and reopen', ...optionChecks, 'no browser errors'] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) {
