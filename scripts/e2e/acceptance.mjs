@@ -14,8 +14,8 @@ const modules = path.resolve(process.env.DSH_QA_MODULES ?? path.join(root, 'node
 const cli = path.join(modules, '@deepseek-ai/dsh/lib/bin.js');
 assert.ok(fs.existsSync(cli), 'Set DSH_QA_MODULES to an official DSH node_modules directory');
 const version = JSON.parse(fs.readFileSync(path.join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')).version;
-assert.ok(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4'].includes(version), `Unsupported acceptance runtime: ${version}`);
-const explicitDraftPolicies = ['0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4'].includes(version);
+assert.ok(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version), `Unsupported acceptance runtime: ${version}`);
+const explicitDraftPolicies = ['0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version);
 const browserPath = process.env.DSH_QA_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 assert.ok(fs.existsSync(browserPath), 'Set DSH_QA_BROWSER to a Chromium or Edge executable');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-no-workspace-e2e-'));
@@ -130,7 +130,7 @@ try {
   await driver.waitFor(`!!document.querySelector('[data-dsh-nw-ungrouped] [aria-selected]')`, { label: 'standalone sidebar row' });
   await driver.waitFor('!!window.__noWorkspaceQa', { label: 'QA client registration' });
   const sidebarChecks = [];
-  const locales = ['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4'].includes(version) ? ['en', 'zh', 'ja', 'es', 'fr', 'de', 'ru', 'pt', 'en'] : ['en', 'zh', 'en'];
+  const locales = ['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version) ? ['en', 'zh', 'ja', 'es', 'fr', 'de', 'ru', 'pt', 'en'] : ['en', 'zh', 'en'];
   const chipChecks = [];
   async function checkStandaloneChip(locale, stage) {
     const title = locale === 'zh' ? '无工作区' : 'No Workspace';
@@ -291,7 +291,7 @@ try {
   if (await driver.eval(`!!document.querySelector(${JSON.stringify(accountClose)})`)) {
     await driver.click(accountClose);
   }
-  if (['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4'].includes(version)) {
+  if (['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version)) {
     const fixture = await driver.eval(`fetch('/qa/no-workspace').then(r=>r.json())`);
     for (const title of ['No Workspace', 'Choose workspace', '研究資料']) {
       await driver.eval(`fetch('/qa/no-workspace?title=' + encodeURIComponent(${JSON.stringify(title)}), {method: 'PATCH'}).then(r=>r.json())`);
@@ -403,7 +403,7 @@ try {
       optionChecks.push(`preset and draft standalone with workspace=${withWorkspace}`);
     }
   }
-  if (['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4'].includes(version)) {
+  if (['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version)) {
     for (const locale of locales.slice(0, -1)) {
       await driver.eval(`window.__noWorkspaceQa.setLocale(${JSON.stringify(locale)})`);
       await checkStandaloneChip(locale, 'live switch before new session');
