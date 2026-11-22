@@ -9,7 +9,7 @@
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
 [![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
-[![DSH](https://img.shields.io/badge/DSH-0.2.3--alpha.1-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![DSH](https://img.shields.io/badge/DSH-0.2.3--alpha.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 为 DeepSeek Harness 添加真正的一等「无工作区」会话，同时保留原生工作区体验。
@@ -43,7 +43,7 @@ dsh plugin --profile desktop add dsh-plugin-no-workspace
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # 或
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.2.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.5.tgz
 ```
 
 安装或升级后重启 DSH，使宿主端和客户端代码同时重新加载。
@@ -68,11 +68,13 @@ npm test
 npm run check:package
 ```
 
-自动测试覆盖宿主行为、DSH 0.2 导航契约及持久化。`npm run test:e2e` 会自行创建并清理临时 Web profile 和无头浏览器，验证真实会话创建、预设创建器（Agent Preset Creator）与草稿初始化选项、原生 Web 快捷键、显式工作区选择、草稿转移、解绑以及侧边栏独立会话区块的中英标题、原生标题样式与会话标题对齐。若官方 DSH `0.2.3-alpha.1`（或 `0.2.2-rc.5` / `0.2.2-rc.4` / `0.2.2-rc.3` / `0.2.2-rc.1` / `0.2.1-rc.5` / `0.2.1-rc.2` / `0.2.0-rc.2`）不在当前项目依赖中，请通过 `DSH_QA_MODULES` 指定其 node_modules；也可通过 `DSH_QA_BROWSER` 指定 Chromium/Edge 路径。Windows CI 会运行此测试（在官方重新发布 `0.2.3-alpha.1` 的 Cordis 依赖包前，CI 暂跳过该 alpha 版本），结果保存在 `scratch/e2e-current/`，不会使用日常 DSH profile。
+自动测试覆盖宿主行为、DSH 0.2 导航契约及持久化。`npm run test:e2e` 会自行创建并清理临时 Web profile 和无头浏览器，验证真实会话创建、预设创建器（Agent Preset Creator）与草稿初始化选项、原生 Web 快捷键、显式工作区选择、草稿转移、解绑以及侧边栏独立会话区块的中英标题、原生标题样式与会话标题对齐。若官方 DSH `0.2.3-alpha.2`（或 `0.2.3-alpha.1` / `0.2.2-rc.5` / `0.2.2-rc.4` / `0.2.2-rc.3` / `0.2.2-rc.1` / `0.2.1-rc.5` / `0.2.1-rc.2` / `0.2.0-rc.2`）不在当前项目依赖中，请通过 `DSH_QA_MODULES` 指定其 node_modules；也可通过 `DSH_QA_BROWSER` 指定 Chromium/Edge 路径。Windows CI 在 Node `24.22.3` 上测试 `0.2.3-alpha.2`。`0.2.3-alpha.1` 仍因该版本的 Cordis 依赖包问题暂不纳入 CI。测试结果保存在 `scratch/e2e-current/`，不会使用日常 DSH profile。
 
 ## 兼容性
 
-未发布（当前源码）：在声明的兼容范围中显式纳入官方 DSH `0.2.3-alpha.1`，解决 npm 默认预发布语义下的 `ERESOLVE` 依赖解析限制，并保留此前支持的所有宿主版本（`0.2.3-alpha.1` 需要 Node `>=24.9.0`；在官方重新发布其 Cordis 依赖包前，Windows CI 矩阵暂跳过该 alpha 版本）。提升侧边栏独立会话区块的选择器优先级（`[data-dsh-nw-ungrouped][data-dsh-nw-heading]:not(:first-child)`），确保在 `0.2.3-alpha.1` 新的客户端样式挂载顺序下仍保持与上方工作区的 `12px` 间距。修复切换界面语言后工作区选择器中「无工作区」/ “No Workspace” 合成项缓存未随语言刷新标题的问题。仅在主对话视图（`main.conversation` 槽位）中注入「无工作区」选项、标识与选择跟踪，且仅在非内嵌场景（`occurrence !== 'embedded'`）下解锁独立空白会话输入框，使代码审阅（Code review）与右侧栏对话等内嵌会话保持原生工作区选择器与门禁行为。
+未发布（当前源码）将官方 DSH `0.2.3-alpha.2` 纳入 `peerDependencies` 和 `engines.dsh` 的兼容范围，支持 npm 严格依赖安装。该宿主要求 Node `^24.22.3 || >=26.13.1`。Windows CI 在 Node `24.22.3` 上安装插件打包文件并运行 alpha.2 浏览器验收测试。现有插件代码无需改动即可通过验收。
+
+版本 `1.5.5`：在声明的兼容范围中显式纳入官方 DSH `0.2.3-alpha.1`，解决 npm 默认预发布语义下的 `ERESOLVE` 依赖解析限制，并保留此前支持的所有宿主版本（`0.2.3-alpha.1` 需要 Node `>=24.9.0`；在官方重新发布其 Cordis 依赖包前，Windows CI 矩阵暂跳过该 alpha 版本）。提升侧边栏独立会话区块的选择器优先级（`[data-dsh-nw-ungrouped][data-dsh-nw-heading]:not(:first-child)`），确保在 `0.2.3-alpha.1` 新的客户端样式挂载顺序下仍保持与上方工作区的 `12px` 间距。修复切换界面语言后工作区选择器中「无工作区」/ “No Workspace” 合成项缓存未随语言刷新标题的问题。仅在主对话视图（`main.conversation` 槽位）中注入「无工作区」选项、标识与选择跟踪，且仅在非内嵌场景（`occurrence !== 'embedded'`）下解锁独立空白会话输入框，使代码审阅（Code review）与右侧栏对话等内嵌会话保持原生工作区选择器与门禁行为。
 
 版本 `1.5.3` – `1.5.4`：在声明的兼容范围中显式纳入官方 DSH `0.2.2-rc.4` 与 `0.2.2-rc.5`，解决 npm 默认预发布语义下的 `ERESOLVE` 依赖解析限制，并保留此前支持的所有宿主版本。浏览器验收与 Windows CI 矩阵纳入 rc.4 与 rc.5；这两个宿主均需要 Node `>=24.9.0`。rc.5 仅调整网页搜索提供方的选择（DeepSeek 模型改用服务端搜索），插件不涉及网页搜索，无需代码改动。在 rc.4 上使用本地模拟提供方验证了输出前及部分输出后的 `CONTENT_REFUSED`：独立会话仍可选择，在宿主重启后仍能恢复并继续发送提示词。
 
@@ -94,11 +96,11 @@ npm run check:package
 
 版本 `1.1.0`：通过原生 Session Controller 创建可持久恢复的独立会话；适配侧边栏组件属性与拆分后的工作区入口，避免修改已缓存的注入结果。
 
-声明兼容范围为 `>=0.2.0-rc.2 <0.3.0-0 || 0.2.1-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1 || 0.2.2-rc.3 || 0.2.2-rc.4 || 0.2.2-rc.5 || 0.2.3-alpha.1`；官方 dsh `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.3`、`0.2.2-rc.4`、`0.2.2-rc.5` 与 `0.2.3-alpha.1` 满足该范围。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.2.2-rc.1.md)。
+声明兼容范围为 `>=0.2.0-rc.2 <0.3.0-0 || 0.2.1-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1 || 0.2.2-rc.3 || 0.2.2-rc.4 || 0.2.2-rc.5 || 0.2.3-alpha.1 || 0.2.3-alpha.2`。官方 DSH `0.2.0-rc.2`、`0.2.1-rc.2`、`0.2.1-rc.5`、`0.2.2-rc.1`、`0.2.2-rc.3`、`0.2.2-rc.4`、`0.2.2-rc.5`、`0.2.3-alpha.1` 与 `0.2.3-alpha.2` 满足该范围。旧版 DSH 请保留上一插件版本。[验证记录](.github/reviews/dsh-0.2.2-rc.1.md)。
 
-已发布版本可从 [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace) 安装。测试当前源码时，先运行 `npm ci` 和 `npm pack`，再运行 `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.2.tgz`。发布完整性检查见 [发布流程](.github/RELEASING.md)。
+已发布版本可从 [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace) 安装。测试当前源码时，先运行 `npm ci` 和 `npm pack`，再运行 `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.5.tgz`。发布完整性检查见 [发布流程](.github/RELEASING.md)。
 
-当前源码兼容目标为 DSH `0.2.3-alpha.1`（同时兼容 `0.2.2-rc.5`、`0.2.2-rc.4`、`0.2.2-rc.3`、`0.2.2-rc.1`、`0.2.1-rc.5`、`0.2.1-rc.2` 与 `0.2.0-rc.2`）。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
+当前源码兼容目标为 DSH `0.2.3-alpha.2`（同时兼容 `0.2.3-alpha.1`、`0.2.2-rc.5`、`0.2.2-rc.4`、`0.2.2-rc.3`、`0.2.2-rc.1`、`0.2.1-rc.5`、`0.2.1-rc.2` 与 `0.2.0-rc.2`）。运行 `npm ci`、`npm test` 和 `npm run check:package` 可验证构建及发布包。更新后请重启 DSH。
 
 
 `1.1.0` 曾在 DSH `0.1.5-rc.2` 的隔离 Web 环境验证空会话持久化和移出工作区。客户端加载有自动化测试。

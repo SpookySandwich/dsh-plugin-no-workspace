@@ -9,7 +9,7 @@ English · [简体中文](README.md)
 [![npm](https://img.shields.io/npm/v/dsh-plugin-no-workspace?style=flat-square&color=cb3837)](https://www.npmjs.com/package/dsh-plugin-no-workspace)
 [![CI](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/SpookySandwich/dsh-plugin-no-workspace?style=flat-square)](https://github.com/SpookySandwich/dsh-plugin-no-workspace/releases/latest)
-[![DSH](https://img.shields.io/badge/DSH-0.2.3--alpha.1-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
+[![DSH](https://img.shields.io/badge/DSH-0.2.3--alpha.2-23272f?style=flat-square)](https://github.com/deepseek-ai/deepseek-harness)
 [![License](https://img.shields.io/badge/license-MIT-f0b429?style=flat-square)](LICENSE)
 
 True first-class workspace-free conversations for DeepSeek Harness, without replacing its native workspace experience.
@@ -43,7 +43,7 @@ Install from a local checkout or package:
 ```bash
 dsh plugin --profile desktop add ./dsh-plugin-no-workspace
 # or
-dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.2.tgz
+dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.5.tgz
 ```
 
 Restart DSH after installing or upgrading so both host and client code reload.
@@ -68,11 +68,13 @@ npm test
 npm run check:package
 ```
 
-Automated tests cover host behavior, the DSH 0.2 navigation contract, and persistence. `npm run test:e2e` creates and removes its own temporary Web profile and headless browser. It checks real session creation, Agent Preset Creator and draft-initialization options, the native Web shortcut, explicit workspace selection, draft transfer, detachment, and the standalone sidebar section's localized Chinese/English heading, native heading typography, and conversation title alignment. Set `DSH_QA_MODULES` to an official DSH `0.2.3-alpha.1` (or `0.2.2-rc.5` / `0.2.2-rc.4` / `0.2.2-rc.3` / `0.2.2-rc.1` / `0.2.1-rc.5` / `0.2.1-rc.2` / `0.2.0-rc.2`) node_modules directory if it is outside this checkout; set `DSH_QA_BROWSER` to a Chromium/Edge executable if needed. Windows CI runs this test (temporarily skipping `0.2.3-alpha.1` until upstream republishes its Cordis vendor packages). Results are written to `scratch/e2e-current/`. No existing DSH profile is used.
+Automated tests cover host behavior, the DSH 0.2 navigation contract, and persistence. `npm run test:e2e` creates and removes its own temporary Web profile and headless browser. It checks real session creation, Agent Preset Creator and draft-initialization options, the native Web shortcut, explicit workspace selection, draft transfer, detachment, and the standalone sidebar section's localized Chinese/English heading, native heading typography, and conversation title alignment. Set `DSH_QA_MODULES` to an official DSH `0.2.3-alpha.2` (or `0.2.3-alpha.1` / `0.2.2-rc.5` / `0.2.2-rc.4` / `0.2.2-rc.3` / `0.2.2-rc.1` / `0.2.1-rc.5` / `0.2.1-rc.2` / `0.2.0-rc.2`) node_modules directory if it is outside this checkout. Set `DSH_QA_BROWSER` to a Chromium/Edge executable if needed. Windows CI runs this test for `0.2.3-alpha.2` on Node `24.22.3`. It still skips `0.2.3-alpha.1` pending an upstream fix for that version’s Cordis packages. Results are written to `scratch/e2e-current/`. No existing DSH profile is used.
 
 ## Compatibility
 
-Unreleased (current source): Explicitly admits official DSH `0.2.3-alpha.1` in the declared host range, resolving `ERESOLVE` under default npm prerelease resolution while retaining all previously supported host versions (`0.2.3-alpha.1` requires Node `>=24.9.0`; Windows CI skips the alpha for now until upstream republishes its Cordis vendor packages). Increases the standalone sidebar section selector specificity (`[data-dsh-nw-ungrouped][data-dsh-nw-heading]:not(:first-child)`) so the `12px` top gap above standalone chats holds under `0.2.3-alpha.1`'s client style mounting order. Refreshes the cached synthetic workspace picker entry when the localized `"No Workspace"` / `"无工作区"` title changes after a live language switch. Restricts the synthetic `"No Workspace"` picker row, chip marking, and workspace-selection tracking to conversations inside the `main.conversation` slot and unlocks the standalone composer only when `occurrence !== 'embedded'`, keeping pickers and composers in embedded conversations (such as the Code review chat and right-sidebar chat) native.
+Unreleased (current source) adds official DSH `0.2.3-alpha.2` to the peer and engine ranges for strict npm installs. This host requires Node `^24.22.3 || >=26.13.1`. Windows CI tests the packed plugin on alpha.2 with Node `24.22.3`. The existing plugin code passed browser acceptance without modification.
+
+Version `1.5.5`: Explicitly admits official DSH `0.2.3-alpha.1` in the declared host range, resolving `ERESOLVE` under default npm prerelease resolution while retaining all previously supported host versions (`0.2.3-alpha.1` requires Node `>=24.9.0`; Windows CI skips the alpha for now until upstream republishes its Cordis vendor packages). Increases the standalone sidebar section selector specificity (`[data-dsh-nw-ungrouped][data-dsh-nw-heading]:not(:first-child)`) so the `12px` top gap above standalone chats holds under `0.2.3-alpha.1`'s client style mounting order. Refreshes the cached synthetic workspace picker entry when the localized `"No Workspace"` / `"无工作区"` title changes after a live language switch. Restricts the synthetic `"No Workspace"` picker row, chip marking, and workspace-selection tracking to conversations inside the `main.conversation` slot and unlocks the standalone composer only when `occurrence !== 'embedded'`, keeping pickers and composers in embedded conversations (such as the Code review chat and right-sidebar chat) native.
 
 Versions `1.5.3` – `1.5.4`: Explicitly admit official DSH `0.2.2-rc.4` and `0.2.2-rc.5` in the declared host range, resolving `ERESOLVE` under default npm prerelease resolution while retaining all previously supported host versions. Add rc.4 and rc.5 to browser acceptance and the Windows CI matrix; both hosts require Node `>=24.9.0`. rc.5 only changes how web search picks its provider (DeepSeek models now use server-side search); the plugin does not use web search and needs no code change. On rc.4, a local provider fixture verified `CONTENT_REFUSED` before output and after partial output: standalone chats remain selectable, survive a host restart, and accept follow-up prompts.
 
@@ -94,11 +96,11 @@ Version `1.2.0`: Update the declared host target to official dsh `0.2.0-rc.2`. S
 
 Version `1.1.0`: Create durable standalone chats through the native Session Controller. Adapt sidebar component props instead of cached injection results, including the split workspace sidebar.
 
-The declared host range is `>=0.2.0-rc.2 <0.3.0-0 || 0.2.1-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1 || 0.2.2-rc.3 || 0.2.2-rc.4 || 0.2.2-rc.5 || 0.2.3-alpha.1`; official dsh `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.3`, `0.2.2-rc.4`, `0.2.2-rc.5`, and `0.2.3-alpha.1` satisfy it. Keep the previous plugin release on older DSH. [Validation record](.github/reviews/dsh-0.2.2-rc.1.md).
+The declared host range is `>=0.2.0-rc.2 <0.3.0-0 || 0.2.1-rc.2 || 0.2.1-rc.5 || 0.2.2-rc.1 || 0.2.2-rc.3 || 0.2.2-rc.4 || 0.2.2-rc.5 || 0.2.3-alpha.1 || 0.2.3-alpha.2`. Official DSH versions `0.2.0-rc.2`, `0.2.1-rc.2`, `0.2.1-rc.5`, `0.2.2-rc.1`, `0.2.2-rc.3`, `0.2.2-rc.4`, `0.2.2-rc.5`, `0.2.3-alpha.1`, and `0.2.3-alpha.2` satisfy it. Keep the previous plugin release on older DSH. [Validation record](.github/reviews/dsh-0.2.2-rc.1.md).
 
-Install published versions from [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace). To test the current source, run `npm ci` and `npm pack`, then `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.2.tgz`. See the [release procedure](.github/RELEASING.md) for publication checks.
+Install published versions from [npm](https://www.npmjs.com/package/dsh-plugin-no-workspace). To test the current source, run `npm ci` and `npm pack`, then `dsh plugin --profile desktop add ./dsh-plugin-no-workspace-1.5.5.tgz`. See the [release procedure](.github/RELEASING.md) for publication checks.
 
-Current source targets DSH `0.2.3-alpha.1` (compatible with `0.2.2-rc.5`, `0.2.2-rc.4`, `0.2.2-rc.3`, `0.2.2-rc.1`, `0.2.1-rc.5`, `0.2.1-rc.2`, and `0.2.0-rc.2`). Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
+Current source targets DSH `0.2.3-alpha.2` (compatible with `0.2.3-alpha.1`, `0.2.2-rc.5`, `0.2.2-rc.4`, `0.2.2-rc.3`, `0.2.2-rc.1`, `0.2.1-rc.5`, `0.2.1-rc.2`, and `0.2.0-rc.2`). Run `npm ci`, `npm test`, and `npm run check:package` to verify the build and package. Restart DSH after updating.
 
 
 Version `1.1.0` checked standalone persistence and workspace detachment on DSH `0.1.5-rc.2`. Automated tests cover client loading.

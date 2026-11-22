@@ -14,9 +14,9 @@ const modules = path.resolve(process.env.DSH_QA_MODULES ?? path.join(root, 'node
 const cli = path.join(modules, '@deepseek-ai/dsh/lib/bin.js');
 assert.ok(fs.existsSync(cli), 'Set DSH_QA_MODULES to an official DSH node_modules directory');
 const version = JSON.parse(fs.readFileSync(path.join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')).version;
-assert.ok(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5', '0.2.3-alpha.1'].includes(version), `Unsupported acceptance runtime: ${version}`);
-const explicitDraftPolicies = ['0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5', '0.2.3-alpha.1'].includes(version);
-const alpha = version === '0.2.3-alpha.1';
+const alpha = ['0.2.3-alpha.1', '0.2.3-alpha.2'].includes(version);
+const explicitDraftPolicies = alpha || ['0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version);
+assert.ok(explicitDraftPolicies || ['0.2.0-rc.2', '0.2.1-rc.2'].includes(version), `Unsupported acceptance runtime: ${version}`);
 const extendedLocaleChecks = !['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5'].includes(version);
 const browserPath = process.env.DSH_QA_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 assert.ok(fs.existsSync(browserPath), 'Set DSH_QA_BROWSER to a Chromium or Edge executable');
