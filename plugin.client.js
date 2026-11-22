@@ -44,7 +44,7 @@ button[data-dsh-nw-picker-item] > span:first-child::before {
    standalone conversations distinct from the last Workspace without a divider.
    Attribute-backed copy follows the picker locale without inserting children
    into DSH's React-owned tree. */
-[data-dsh-nw-ungrouped]:not(:first-child) {
+[data-dsh-nw-ungrouped][data-dsh-nw-heading]:not(:first-child) {
   margin-top: 12px;
 }
 [data-dsh-nw-ungrouped]::before {
@@ -268,11 +268,12 @@ function installStandaloneNavigation(ctx) {
 const syntheticSnapshots = new WeakMap();
 function syntheticWorkspaceSnapshot(snapshot) {
   if (!snapshot || typeof snapshot !== 'object') return snapshot;
+  const title = getLocale() === 'zh' ? '\u65e0\u5de5\u4f5c\u533a' : 'No Workspace';
   const cached = syntheticSnapshots.get(snapshot);
-  if (cached) return cached;
+  if (cached && cached.items[0].title === title) return cached;
   const synthetic = {
     workspaceId: NO_WORKSPACE_ID,
-    title: getLocale() === 'zh' ? '\u65e0\u5de5\u4f5c\u533a' : 'No Workspace',
+    title: title,
     path: '',
     sessionIds: [],
   };
@@ -285,11 +286,16 @@ function syntheticWorkspaceSnapshot(snapshot) {
   return transformed;
 }
 
+function inMainConversation(element) {
+  const content = element?.closest('[data-conversation-content]');
+  return !content || content.closest('[data-slot]')?.getAttribute('data-slot') === 'main.conversation';
+}
+
 function wrapComposerEntry(entry) {
   if (!entry || entry[WRAPPED]) return function () {};
   const NativeComposer = entry.component;
   function StandaloneComposer(props) {
-    const unlock = props.sessionId !== undefined && props.disabled === true;
+    const unlock = props.sessionId !== undefined && props.disabled === true && props.occurrence !== 'embedded';
     if (!unlock) return React.createElement(NativeComposer, props);
     return React.createElement(NativeComposer, Object.assign({}, props, {
       disabled: false,
@@ -315,7 +321,10 @@ function wrapWorkspacePickerEntry(entry, navigation, ui) {
   function WorkspaceChipMarker({ anchorRef, selectedId }) {
     // The native picker owns the chip anchor and the optimistic selection.
     // Neither translated text nor a user's workspace title identifies state.
-    React.useLayoutEffect(function () { ui.markChip(anchorRef?.current, selectedId); });
+    React.useLayoutEffect(function () {
+      const button = anchorRef?.current;
+      if (inMainConversation(button)) ui.markChip(button, selectedId);
+    });
     React.useLayoutEffect(function () {
       const button = anchorRef?.current;
       return function () { ui.removeChip(button); };
@@ -323,6 +332,10 @@ function wrapWorkspacePickerEntry(entry, navigation, ui) {
     return null;
   }
   function NoWorkspacePicker(props) {
+    const marker = React.createElement(WorkspaceChipMarker, { anchorRef: props.anchorRef, selectedId: props.selectedId });
+    if (!inMainConversation(props.anchorRef?.current)) {
+      return React.createElement(React.Fragment, null, marker, React.createElement(NativePicker, props));
+    }
     const nativeUseWorkspaces = props.useWorkspaces;
     function useWorkspaces(selector, equality) {
       return nativeUseWorkspaces(function (snapshot) {
@@ -346,8 +359,7 @@ function wrapWorkspacePickerEntry(entry, navigation, ui) {
         }
       },
     }));
-    return React.createElement(React.Fragment, null,
-      React.createElement(WorkspaceChipMarker, { anchorRef: props.anchorRef, selectedId: props.selectedId }), picker);
+    return React.createElement(React.Fragment, null, marker, picker);
   }
   NoWorkspacePicker.displayName = 'NoWorkspacePicker(' + (NativePicker.displayName || NativePicker.name || 'Native') + ')';
   entry.component = NoWorkspacePicker;

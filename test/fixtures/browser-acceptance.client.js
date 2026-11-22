@@ -1,7 +1,7 @@
 window.__ModuleLoader__.load({
   id: 'no-workspace-qa-client',
   factory: () => ({
-    inject: ['uiWorkspace', 'sessions', 'workspaces', 'conversation', 'slots', 'locale', 'configForms'],
+    inject: ['uiWorkspace', 'sessions', 'workspaces', 'conversation', 'slots', 'locale', 'configForms', 'loader'],
     apply(ctx) {
       let resumeWorkspace;
       const originalOpenWorkspace = ctx.uiWorkspace.openWorkspace;
@@ -48,6 +48,27 @@ window.__ModuleLoader__.load({
           restoreWorkspaceNavigation();
           resumeWorkspace?.();
           resumeWorkspace = undefined;
+        },
+        async checkPluginReload() {
+          const entry = [...ctx.loader.entries()].find(item => item.options.name === 'dsh-plugin-no-workspace');
+          const slots = ['conversation.composer.bar', 'conversation.hero.workspace'].map(name =>
+            ctx.slots.entries(name).find(item => (item.options.priority || 0) === 0));
+          const marker = Symbol.for('dsh-plugin-no-workspace.wrapped');
+          const originals = slots.map(slot => slot[marker].original);
+          const styles = () => document.querySelectorAll('style[data-plugin="dsh-plugin-no-workspace"]').length;
+          await ctx.loader.update(entry.id, { disabled: true });
+          const restored = slots.every((slot, i) => slot.component === originals[i]) && styles() === 0;
+          await ctx.loader.update(entry.id, { disabled: false });
+          await entry.fiber.await();
+          return restored && slots.every((slot, i) => slot[marker]?.original === originals[i]) && styles() === 1;
+        },
+        openInSidebar(id) {
+          ctx.get('sidebarRight').openResource(`dsh-resource://subagentchat/session/${encodeURIComponent(id)}`, { kind: 'subagentchat', destination: 'sidebar' });
+        },
+        closeSidebar() {
+          const sidebar = ctx.get('sidebarRight');
+          sidebar.close(sidebar.active().id);
+          if (sidebar.isExpanded()) sidebar.toggleExpanded();
         },
         listed: id => !!ctx.sessions.list.getSnapshot().byId[id],
         opened: id => ctx.sessions.binding(id)?.session.getSnapshot().openState === 'open',

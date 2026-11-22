@@ -80,6 +80,10 @@ function harness(t, { request, draftResult = 'applied', locale = 'en' } = {}) {
   };
   const disposers = [plugin.apply(ctx)];
   t.after(() => { disposers.reverse().forEach(dispose => dispose()); dom.window.close(); });
+  function pickerProps(next) {
+    const rendered = entry.component({ useWorkspaces: select => select(workspaceSnapshot), onPick() {}, onClose() {}, ...next });
+    return rendered.type === React.Fragment ? rendered.props.children[1].props : rendered.props;
+  }
   return {
     requests, opened, listeners, errors, nativeStarts, nativeOptions, nativeReceivers, uiWorkspace, originalStart, routes,
     sidebar, nativeSidebar, composer, drafts, notices, retained, document: dom.window.document,
@@ -105,10 +109,9 @@ function harness(t, { request, draftResult = 'applied', locale = 'en' } = {}) {
       });
       return render;
     },
+    pickerProps,
     pick(id, onPick = () => {}) {
-      const rendered = entry.component({ useWorkspaces: select => select(workspaceSnapshot), onPick, onClose() {} });
-      const props = rendered.type === React.Fragment ? rendered.props.children[1].props : rendered.props;
-      return props.onPick(id);
+      return pickerProps({ onPick }).onPick(id);
     },
     update(nextSessions, nextWorkspaces) {
       if (nextSessions) sessionSnapshot = nextSessions;
@@ -430,6 +433,47 @@ test('standalone composer remains usable and native enabled composers keep their
   assert.equal(adapted.onRequestWorkspace, undefined);
 });
 
+test('an embedded conversation composer keeps its native workspace requirement', t => {
+  const h = harness(t);
+  const locked = { sessionId: 'review', disabled: true, workspacePickerOpen: true, onRequestWorkspace() {} };
+  const embedded = { ...locked, occurrence: 'embedded' };
+  assert.deepEqual(h.composer.component(embedded).props, embedded);
+  assert.equal(h.composer.component({ ...locked, occurrence: 'main' }).props.disabled, false);
+  assert.equal(h.composer.component(locked).props.disabled, false, 'Hosts without occurrences render only the main conversation');
+});
+
+const conversationChip = slot => `<div data-slot="${slot}"><div data-conversation-content="" data-conversation-session="shown">
+  <button aria-haspopup="menu" aria-label="Choose workspace"><svg></svg><span>Choose workspace</span></button></div></div>`;
+
+test('a picker in an embedded conversation stays native and never acts for the main view', async t => {
+  const h = harness(t);
+  h.update(undefined, { items: [{ ...workspace('real'), title: 'Real' }] });
+  h.document.body.innerHTML = conversationChip('forge.review.conversation');
+  const button = h.document.querySelector('button');
+  const anchorRef = { current: button };
+  const picked = [];
+  const props = h.pickerProps({ anchorRef, onPick: id => picked.push(id) });
+  assert.deepEqual(Array.from(props.useWorkspaces(state => state.items), item => item.workspaceId), ['real']);
+  assert.equal(props.selectedId, undefined);
+  props.onPick('real');
+  assert.deepEqual(picked, ['real']);
+  h.mountPicker({ anchorRef, selectedId: undefined });
+  await tick();
+  assert.equal(button.hasAttribute('data-dsh-nw-chip'), false);
+  assert.equal(button.querySelector('span').textContent, 'Choose workspace');
+  h.start();
+  await tick();
+  assert.deepEqual(h.requests.map(request => request.url), ['/no-workspace/create'], 'The embedded pick does not hold main navigation');
+});
+
+test('a picker in the main conversation slot keeps the standalone option', t => {
+  const h = harness(t);
+  h.document.body.innerHTML = conversationChip('main.conversation');
+  const props = h.pickerProps({ anchorRef: { current: h.document.querySelector('button') } });
+  assert.equal(props.selectedId, '::dsh-no-workspace');
+  assert.equal(props.useWorkspaces(state => state.items[0].workspaceId), '::dsh-no-workspace');
+});
+
 for (const [locale, expected] of [['en', 'No Workspace'], ['zh-CN', '无工作区'], ['ZH-tw', '无工作区'], ['fr', 'No Workspace'], ['', 'No Workspace']]) {
   test(`standalone section heading follows locale ${JSON.stringify(locale)} and updates in place`, async t => {
     const h = harness(t, { locale });
@@ -499,6 +543,19 @@ test('standalone chip follows semantic picker state through all host locales and
   assert.equal(label.textContent, 'Native prompt (en)');
   assert.equal(button.getAttribute('aria-label'), 'Native prompt (en)');
   assert.equal(button.hasAttribute('data-dsh-nw-chip'), false);
+});
+
+test('the synthetic picker row follows a live locale switch over an unchanged workspace list', t => {
+  const h = harness(t);
+  h.update(undefined, { items: [{ ...workspace('real'), title: 'Real' }] });
+  const list = () => h.pickerProps().useWorkspaces(state => state);
+  const titles = () => Array.from(list().items, item => item.title);
+  const english = list();
+  assert.deepEqual(titles(), ['No Workspace', 'Real']);
+  assert.equal(list(), english, 'An unchanged list and locale keep one snapshot identity');
+  h.document.documentElement.lang = 'zh-CN';
+  assert.deepEqual(titles(), ['无工作区', 'Real']);
+  assert.equal(list(), list());
 });
 
 for (const title of ['No Workspace', 'Choose workspace', '无工作区', '选择工作区', '研究資料']) {

@@ -14,8 +14,10 @@ const modules = path.resolve(process.env.DSH_QA_MODULES ?? path.join(root, 'node
 const cli = path.join(modules, '@deepseek-ai/dsh/lib/bin.js');
 assert.ok(fs.existsSync(cli), 'Set DSH_QA_MODULES to an official DSH node_modules directory');
 const version = JSON.parse(fs.readFileSync(path.join(modules, '@deepseek-ai/dsh/package.json'), 'utf8')).version;
-assert.ok(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version), `Unsupported acceptance runtime: ${version}`);
-const explicitDraftPolicies = ['0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version);
+assert.ok(['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5', '0.2.3-alpha.1'].includes(version), `Unsupported acceptance runtime: ${version}`);
+const explicitDraftPolicies = ['0.2.1-rc.5', '0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5', '0.2.3-alpha.1'].includes(version);
+const alpha = version === '0.2.3-alpha.1';
+const extendedLocaleChecks = !['0.2.0-rc.2', '0.2.1-rc.2', '0.2.1-rc.5'].includes(version);
 const browserPath = process.env.DSH_QA_BROWSER ?? 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 assert.ok(fs.existsSync(browserPath), 'Set DSH_QA_BROWSER to a Chromium or Edge executable');
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-no-workspace-e2e-'));
@@ -24,7 +26,9 @@ const output = path.resolve(process.env.DSH_QA_OUTPUT ?? path.join(root, 'scratc
 fs.mkdirSync(output, { recursive: true });
 fs.mkdirSync(path.join(profile, 'node_modules'), { recursive: true });
 fs.symlinkSync(path.join(modules, '@deepseek-ai'), path.join(profile, 'node_modules/@deepseek-ai'), 'junction');
-fs.symlinkSync(root, path.join(profile, 'node_modules/dsh-plugin-no-workspace'), 'junction');
+const installedPlugin = path.join(modules, 'dsh-plugin-no-workspace');
+const plugin = fs.existsSync(installedPlugin) ? installedPlugin : root;
+fs.symlinkSync(plugin, path.join(profile, 'node_modules/dsh-plugin-no-workspace'), 'junction');
 const qaClient = path.join(profile, 'node_modules/no-workspace-qa-client');
 fs.mkdirSync(qaClient);
 fs.writeFileSync(path.join(qaClient, 'package.json'), JSON.stringify({ name: 'no-workspace-qa-client', version: '0.0.0', type: 'module',
@@ -116,6 +120,9 @@ try {
   await driver.waitFor(`!document.querySelector('[role="dialog"][aria-modal="true"]') && document.getElementById('root')?.inert === false`, {
     label: 'provider onboarding released keyboard ownership',
   });
+  const status = await driver.eval(`fetch('/no-workspace/status').then(r=>r.json())`);
+  assert.equal(status.plugin, 'dsh-plugin-no-workspace');
+  assert.equal(status.ok, true);
   const openComplete = `window.__noWorkspaceQa?.opened(window.__noWorkspaceQa.current())`;
   const noWorkspace = `${openComplete} && [...document.querySelectorAll('button[data-dsh-nw-chip]')].some(b=>b.innerText.trim()==='No Workspace')`;
   // The chip is optimistic: the previous (already open) standalone session can
@@ -130,7 +137,7 @@ try {
   await driver.waitFor(`!!document.querySelector('[data-dsh-nw-ungrouped] [aria-selected]')`, { label: 'standalone sidebar row' });
   await driver.waitFor('!!window.__noWorkspaceQa', { label: 'QA client registration' });
   const sidebarChecks = [];
-  const locales = ['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version) ? ['en', 'zh', 'ja', 'es', 'fr', 'de', 'ru', 'pt', 'en'] : ['en', 'zh', 'en'];
+  const locales = extendedLocaleChecks ? ['en', 'zh', 'ja', 'es', 'fr', 'de', 'ru', 'pt', 'en'] : ['en', 'zh', 'en'];
   const chipChecks = [];
   async function checkStandaloneChip(locale, stage) {
     const title = locale === 'zh' ? '无工作区' : 'No Workspace';
@@ -178,6 +185,12 @@ try {
     sidebarChecks.push(sidebar);
     fs.writeFileSync(path.join(output, 'sidebar.json'), JSON.stringify(sidebarChecks, null, 2));
     await driver.shot(`sidebar-${locale}`);
+    if (alpha && (locale === 'en' || locale === 'zh')) {
+      await driver.click('button[data-dsh-nw-chip]');
+      await driver.waitFor(`[...document.querySelectorAll('button[role="menuitem"]')].some(b => b.innerText.trim() === ${JSON.stringify(title)})`, { label: `${locale} standalone picker option` });
+      await driver.pressKey('Escape');
+      await driver.waitFor(`!document.querySelector('button[role="menuitem"]')`, { label: 'workspace picker closed' });
+    }
     assert.ok(sidebar.content.includes(title) || (sidebar.content.includes('attr(') && sidebar.label === title),
       `Standalone section needs a localized visible heading: ${JSON.stringify(sidebar)}`);
     assert.equal(sidebar.display, 'block');
@@ -222,8 +235,24 @@ try {
   // its optimistic chip live. This deterministically exercises the rc.2 race
   // that let an already-open standalone satisfy the old workspace wait.
   const beforePickId = await driver.eval('window.__noWorkspaceQa.current()');
+  const attachment = `!!document.querySelector('[data-composer-seat] button[aria-label*="qa-transfer.txt"]')`;
+  if (alpha) {
+    await driver.eval(`(() => {
+      const data = new DataTransfer();
+      data.items.add(new File(['attachment transfer'], 'qa-transfer.txt', {type: 'text/plain'}));
+      document.body.dispatchEvent(new ClipboardEvent('paste', {clipboardData: data, bubbles: true, cancelable: true}));
+    })()`);
+    await driver.waitFor(attachment, { label: 'standalone attachment' });
+  }
   await driver.eval('window.__noWorkspaceQa.holdWorkspaceNavigation()');
   await driver.click('button[data-dsh-nw-chip]');
+  if (alpha) {
+    const search = 'input[aria-label="Search workspaces"]';
+    await driver.waitFor(`!!document.querySelector(${JSON.stringify(search)})`, { label: 'picker search field' });
+    await driver.typeInto(search, 'fixture-workspace');
+    await driver.waitFor(`![...document.querySelectorAll('button[role="menuitem"]')].some(b => b.innerText.trim() === 'No Workspace')`, { label: 'picker filters by directory path' });
+    await driver.shot('picker-path-search');
+  }
   await driver.clickText('button[role="menuitem"]', 'No Workspace acceptance', { exact: true });
   await driver.waitFor(`[...document.querySelectorAll('button[aria-haspopup="menu"]')].some(b=>b.innerText.trim()==='No Workspace acceptance')`, { label: 'optimistic workspace chip' });
   assert.equal(await driver.eval('window.__noWorkspaceQa.current()'), beforePickId);
@@ -232,6 +261,7 @@ try {
   await driver.eval('window.__noWorkspaceQa.resumeWorkspaceNavigation()');
   await driver.waitFor(inWorkspace, { label: 'workspace picker selection' });
   await driver.waitFor(`document.querySelector('[data-composer-input]').innerText.includes('LOCAL NO WORKSPACE QA DRAFT')`, { label: 'native draft transfer' });
+  if (alpha) await driver.waitFor(attachment, { label: 'workspace adopted the attachment with the text' });
   const beforeDetach = await driver.eval(`fetch('/qa/no-workspace').then(r=>r.json())`);
   const selectedForDetach = await driver.eval('window.__noWorkspaceQa.current()');
   assert.ok(beforeDetach.sessionIds.includes(selectedForDetach), 'Waited for actual workspace membership before reopening the picker');
@@ -257,6 +287,54 @@ try {
   assert.ok(standaloneId);
   const standaloneBefore = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(standaloneId)}).then(r=>r.json())`);
   assert.ok(standaloneBefore.stored, 'Fresh standalone is immediately durable');
+  const populated = [];
+  if (alpha) {
+    const fresh = await driver.eval(`fetch('/no-workspace/create', { method: 'POST', body: '{}' }).then(r => r.json())`);
+    for (const [query, state] of [[`sessionId=${fresh.sessionId}`, 'done'], ['failed', 'error']]) {
+      const seeded = await driver.eval(`fetch('/qa/no-workspace?${query}', { method: 'POST' }).then(r => r.json())`);
+      const { id, cwd } = seeded.stored.header;
+      if (state === 'error') {
+        assert.deepEqual(seeded.memberships, [seeded.workspaceId]);
+        const detached = await driver.eval(`fetch('/no-workspace/detach', { method: 'POST', body: JSON.stringify({sessionId: ${JSON.stringify(id)}}) }).then(r => r.json())`);
+        assert.equal(detached.detachedCount, 1);
+        assert.equal(cwd, path.join(home, 'fixture-workspace'));
+      } else {
+        assert.deepEqual(seeded.memberships, []);
+        assert.equal(cwd, os.homedir());
+      }
+      populated.push({ id, cwd });
+      const dot = `[data-dsh-nw-ungrouped] [data-row-key="session:${id}"] [data-state="${state}"]`;
+      await driver.waitFor(`document.querySelector(${JSON.stringify(dot)})?.getBoundingClientRect().width > 0`, { label: `native ${state} indicator on standalone row` });
+    }
+    const layout = await driver.waitFor(`(() => {
+      const section = document.querySelector('[data-dsh-nw-ungrouped]');
+      if (section.closest('[role="tree"]').getAnimations({ subtree: true }).length) return false;
+      const rows = [...section.querySelectorAll('[data-row-key^="session:"]')].map(row => row.getBoundingClientRect());
+      return { headingSpace: rows[0].top - section.getBoundingClientRect().top, gaps: rows.slice(1).map((row, i) => row.top - rows[i].bottom) };
+    })()`, { label: 'settled standalone rows' });
+    assert.ok(layout.headingSpace >= 36 && layout.gaps.every(gap => gap >= 0 && gap <= 4), `Standalone rows stack under their heading: ${JSON.stringify(layout)}`);
+    await driver.shot('standalone-status');
+    const embeddedId = await driver.eval(`fetch('/no-workspace/create', { method: 'POST', body: '{}' }).then(r => r.json()).then(r => r.sessionId)`);
+    const requestsBeforeEmbedded = requests.length;
+    await driver.eval(`window.__noWorkspaceQa.openInSidebar(${JSON.stringify(embeddedId)})`);
+    const embedded = `[data-sidebar-chat] [data-conversation-session="${embeddedId}"]`;
+    const embeddedState = await driver.waitFor(`(() => {
+      const chip = document.querySelector('${embedded} button[aria-haspopup="menu"]');
+      const input = document.querySelector('${embedded} [data-composer-input]');
+      return chip && input && { chip: chip.innerText.trim(), marked: chip.hasAttribute('data-dsh-nw-chip'), locked: input.getAttribute('aria-haspopup') === 'menu' };
+    })()`, { label: 'embedded sidebar conversation' });
+    assert.deepEqual(embeddedState, { chip: 'Choose workspace', marked: false, locked: true }, 'An embedded conversation keeps the native chip and composer');
+    await driver.click(`${embedded} button[aria-haspopup="menu"]`);
+    await driver.waitFor(`document.querySelectorAll('button[role="menuitem"]').length > 0`, { label: 'embedded picker' });
+    assert.equal(await driver.eval(`[...document.querySelectorAll('button[role="menuitem"]')].some(b => b.innerText.trim() === 'No Workspace')`), false,
+      'An embedded picker offers no standalone option');
+    await driver.shot('embedded-sidebar-picker');
+    await driver.pressKey('Escape');
+    await driver.waitFor(noWorkspace, { label: 'main conversation stays standalone' });
+    await driver.eval('window.__noWorkspaceQa.closeSidebar()');
+    await driver.waitFor(`!document.querySelector('[data-sidebar-chat]')`, { label: 'sidebar chat closed' });
+    assert.equal(requests.length, requestsBeforeEmbedded, 'An embedded conversation sends no plugin requests');
+  }
   await driver.send('Page.navigate', { url: 'about:blank' });
   await stop(host);
   previousHostLog = hostLog;
@@ -269,6 +347,13 @@ try {
   // Client registration precedes native selection restoration. Let the Host's
   // restored view finish opening before the test selects a different session.
   await driver.waitFor(openComplete, { timeoutMs: 60000, label: 'restarted native selection' });
+  for (const { id, cwd } of populated) {
+    const restored = await driver.eval(`fetch('/qa/no-workspace?sessionId=${id}').then(r => r.json())`);
+    assert.deepEqual(restored.memberships, []);
+    assert.equal(restored.stored.header.cwd, cwd);
+    await driver.eval(`window.__noWorkspaceQa.open(${JSON.stringify(id)})`);
+    await driver.waitFor(`window.__noWorkspaceQa.current() === '${id}' && document.body.innerText.includes('Persisted message for ${id}')`, { label: 'reopened standalone history' });
+  }
   for (const [id, before] of [[detachedId, durableBefore], [standaloneId, standaloneBefore]]) {
     const after = await driver.eval(`fetch('/qa/no-workspace?sessionId=' + ${JSON.stringify(id)}).then(r=>r.json())`);
     assert.ok(after.stored, 'Session remains on disk after host restart');
@@ -291,7 +376,7 @@ try {
   if (await driver.eval(`!!document.querySelector(${JSON.stringify(accountClose)})`)) {
     await driver.click(accountClose);
   }
-  if (['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version)) {
+  if (extendedLocaleChecks) {
     const fixture = await driver.eval(`fetch('/qa/no-workspace').then(r=>r.json())`);
     for (const title of ['No Workspace', 'Choose workspace', '研究資料']) {
       await driver.eval(`fetch('/qa/no-workspace?title=' + encodeURIComponent(${JSON.stringify(title)}), {method: 'PATCH'}).then(r=>r.json())`);
@@ -403,7 +488,7 @@ try {
       optionChecks.push(`preset and draft standalone with workspace=${withWorkspace}`);
     }
   }
-  if (['0.2.2-rc.1', '0.2.2-rc.3', '0.2.2-rc.4', '0.2.2-rc.5'].includes(version)) {
+  if (extendedLocaleChecks) {
     for (const locale of locales.slice(0, -1)) {
       await driver.eval(`window.__noWorkspaceQa.setLocale(${JSON.stringify(locale)})`);
       await checkStandaloneChip(locale, 'live switch before new session');
@@ -422,6 +507,13 @@ try {
     }
     optionChecks.push('semantic chip in all eight host locales after switch, detach, new session and reload', 'real workspace titles do not trigger standalone styling');
   }
+  if (alpha) {
+    assert.equal(await driver.eval('window.__noWorkspaceQa.checkPluginReload()'), true, 'Reload restores native slots and removes plugin styles before reapplying');
+    await driver.shot('reload-before-render');
+    await driver.typeInto('[data-composer-input]', ' ');
+    await checkStandaloneChip(locales.at(-2), 'reload after native render');
+    optionChecks.push('picker path search', 'text and attachment adoption', 'native unread and failure indicators', 'embedded sidebar conversation keeps the native picker and composer', 'populated session history and cwd across restart', 'client unload and reload');
+  }
   fs.writeFileSync(path.join(output, 'chip-checks.json'), JSON.stringify(chipChecks, null, 2));
   assert.deepEqual(driver.appErrors(), []);
   browserIsolation = await checkBrowserIsolation(driver, path.join(home, 'browser'), origins);
@@ -431,7 +523,7 @@ try {
   await stop(browser);
   const profileIsolation = checkProfileIsolation(path.join(home, 'browser'));
   fs.writeFileSync(path.join(output, 'browser-isolation.json'), JSON.stringify({ ...browserIsolation, ...profileIsolation }, null, 2));
-  const report = { ok: true, dsh: version, processes, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized native sidebar typography and conversation alignment', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'optimistic workspace chip does not complete navigation', 'draft transfer', 'detachment', 'fresh and detached blank durability across host restart and reopen', ...optionChecks, 'no browser errors'] };
+  const report = { ok: true, dsh: version, plugin, processes, requests, screenshot, sidebarChecks, checks: ['client boot', 'standalone creation', 'localized native sidebar typography and conversation alignment', 'explicit workspace creation', 'Web shortcut', 'fresh default-preset blank', 'optimistic workspace chip does not complete navigation', 'draft transfer', 'detachment', 'fresh and detached blank durability across host restart and reopen', ...optionChecks, 'no browser errors'] };
   fs.writeFileSync(path.join(output, 'result.json'), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } catch (error) {
